@@ -1,0 +1,150 @@
+from typing import List, Optional, Dict
+from pydantic import BaseModel
+from datetime import date, datetime
+
+class DashboardStats(BaseModel):
+    activeCompanies: int
+    totalCompanies: int
+    totalUsers: int
+    totalDevices: int
+    onlineDevices: int
+    totalDetections: int
+
+class DetectionTrend(BaseModel):
+    period: str
+    detections: int
+
+class ActivityLog(BaseModel):
+    id: str
+    userId: str
+    userName: str
+    companyName: str
+    action: str
+    target: str
+    timestamp: datetime
+    type: str # detection, camera, user, system
+
+
+class CompanyActivityStat(BaseModel):
+    name: str
+    detections: int
+    cameras: int
+
+class AnalyticsSummary(BaseModel):
+    monthlyDetections: List[DetectionTrend]
+    companyActivity: List[CompanyActivityStat]
+
+class AnalyticsFilter(BaseModel):
+    startDate: Optional[datetime] = None
+    endDate: Optional[datetime] = None
+    companyId: Optional[str] = None
+    location: Optional[str] = None
+    category: Optional[str] = None
+
+class CategoryStat(BaseModel):
+    category: str
+    count: int
+    trend: float # Percentage change
+
+class LocationStat(BaseModel):
+    location: str
+    count: int
+
+# ── Handling Status Breakdown ────────────────────
+class HandlingStatusStat(BaseModel):
+    status: str
+    count: int
+
+# ── Enhanced Detailed Analytics ──────────────────
+class DetailedAnalytics(BaseModel):
+    totalDetections: int
+    resolutionRate: float          # % of detections resolved
+    acceptRate: float              # % of detections accepted (in_progress+resolved+failed)
+    avgHandlingTimeHours: Optional[float] = None  # avg hours from assignment to resolution
+    recordsByCategory: List[CategoryStat]
+    recordsByLocation: List[LocationStat]
+    handlingStatusBreakdown: List[HandlingStatusStat]
+    monthlyTrends: List[DetectionTrend]
+
+# ── Crime Type Analytics ─────────────────────────
+class CrimeTypeStat(BaseModel):
+    crimeType: str
+    count: int
+
+class CrimeTypeTimeStat(BaseModel):
+    period: str
+    crimeType: str
+    count: int
+
+class CrimeTypeLocationStat(BaseModel):
+    location: str
+    crimeType: str
+    count: int
+
+class CrimeTypeCompanyStat(BaseModel):
+    companyName: str
+    crimeType: str
+    count: int
+
+class HourCrimeHeatmapCell(BaseModel):
+    hour: int
+    crimeType: str
+    count: int
+
+class CrimeTypeAnalyticsResponse(BaseModel):
+    distribution: List[CrimeTypeStat]
+    trendsOverTime: List[CrimeTypeTimeStat]
+    byLocation: List[CrimeTypeLocationStat]
+    byCompany: List[CrimeTypeCompanyStat]
+    heatmap: List[HourCrimeHeatmapCell]
+
+# ── Company Comparison ───────────────────────────
+class CompanyComparisonMetrics(BaseModel):
+    companyId: str
+    companyName: str
+    totalDetections: int
+    resolvedCount: int
+    resolutionRate: float
+    avgResponseTimeHours: Optional[float] = None
+    avgResolutionTimeHours: Optional[float] = None
+    reopenRate: float
+    slaComplianceRate: float  # placeholder – computed if SLA data exists
+    acceptRate: float
+
+class CompanyComparisonTrend(BaseModel):
+    period: str
+    companyId: str
+    companyName: str
+    detections: int
+
+class CompanyComparisonResponse(BaseModel):
+    companies: List[CompanyComparisonMetrics]
+    trends: List[CompanyComparisonTrend]
+
+# ── Performance Metrics ──────────────────────────
+class CompanyPerformance(BaseModel):
+    companyId: str
+    companyName: str
+    avgResponseTimeHours: Optional[float] = None
+    avgResolutionTimeHours: Optional[float] = None
+    totalHandled: int
+    resolvedCount: int
+    failedCount: int
+    slaComplianceRate: float
+
+class PerformanceResponse(BaseModel):
+    companies: List[CompanyPerformance]
+
+class RawSubmission(BaseModel):
+    id: str
+    type: str # detection
+    title: str
+    category: str
+    location: str
+    status: str
+    handlingStatus: Optional[str] = None
+    crimeType: Optional[str] = None
+    timestamp: datetime
+    companyName: str
+    assignedCompanyName: Optional[str] = None
+    details: Optional[dict] = None # For dynamic_data or other specifics
