@@ -45,7 +45,8 @@ def _enrich_detection(db: Session, detection: models.Detection) -> dict:
         "handlingStatus": detection.handling_status,
         "handlingNotes": detection.handling_notes,
         "handlingProofUrls": detection.handling_proof_urls or [],
-        "eligibleForAssignment": detection.eligible_for_assignment
+        "eligibleForAssignment": detection.eligible_for_assignment,
+        "dispatchMessage": getattr(detection, "dispatch_message", None)
     }
     
     data["assignmentType"] = getattr(detection, "assignment_type", "company")
@@ -121,10 +122,15 @@ def get_detections(
         detections = db.query(models.Detection).all()
     else:
         from sqlalchemy import or_
+        # Also include detections where the current user has been assigned (user-level traffic assignments)
+        user_assigned_detection_ids = db.query(models.DetectionAssignment.detection_id).filter(
+            models.DetectionAssignment.user_id == current_user.id
+        ).subquery()
         detections = db.query(models.Detection).filter(
             or_(
                 models.Detection.organization_id == current_user.organization_id,
-                models.Detection.assigned_company_id == current_user.organization_id
+                models.Detection.assigned_company_id == current_user.organization_id,
+                models.Detection.id.in_(user_assigned_detection_ids)
             )
         ).all()
     return [_enrich_detection(db, d) for d in detections]
@@ -325,15 +331,21 @@ async def create_detection(
                     if camera.lat and camera.lng:
                         include_external = detection.allow_external_assignment
                         radius_km = crud.system_setting.get_value(db, "assignment_radius_traffic", 10.0)
+                        print(f"[DISPATCH CREATE] Traffic flow: org={detection.organization_id}, camera=({camera.lat},{camera.lng}), radius={radius_km}km, external={include_external}")
                         nearby = crud.officer_location.find_nearby_officers_multi(
                             db, primary_org_id=detection.organization_id,
                             lat=camera.lat, lng=camera.lng, radius_km=radius_km,
                             include_external=include_external
                         )
+                        if len(nearby) == 0:
+                            print(f"[DISPATCH CREATE] ⚠ NO OFFICERS DISPATCHED. Possible reasons: no officers online, all officers stale (>5min), all officers outside {radius_km}km radius.")
+                        else:
+                            print(f"[DISPATCH CREATE] ✓ Dispatching to {len(nearby)} officer(s)")
                         for officer, dist in nearby:
                             asg = crud.traffic_alert.create_assignment(
                                 db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                             )
+                            print(f"[DISPATCH CREATE] → Assigned officer {officer.user_id} at {dist:.2f}km (assignment {asg.id})")
                             # WebSocket push
                             asyncio.create_task(manager.send_to_user(
                                 str(officer.user_id),
@@ -357,6 +369,8 @@ async def create_detection(
                                     body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
                                     data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                 ))
+                    else:
+                        print(f"[DISPATCH CREATE] ⚠ Camera {camera.id} has no coordinates (lat={camera.lat}, lng={camera.lng}). Cannot dispatch.")
                 else:
                     # ═══ NON-TRAFFIC COMPANY FLOW ═══
                     is_linked_to_traffic = False
@@ -373,15 +387,21 @@ async def create_detection(
                             if camera.lat and camera.lng:
                                 include_external = detection.allow_external_assignment
                                 radius_std = crud.system_setting.get_value(db, "assignment_radius_standard", 5.0)
+                                print(f"[DISPATCH CREATE] Linked-traffic flow: linked_org={linked_org.id}, camera=({camera.lat},{camera.lng}), radius={radius_std}km")
                                 nearby = crud.officer_location.find_nearby_officers_multi(
                                     db, primary_org_id=linked_org.id,
                                     lat=camera.lat, lng=camera.lng, radius_km=radius_std,
                                     include_external=include_external
                                 )
+                                if len(nearby) == 0:
+                                    print(f"[DISPATCH CREATE] ⚠ NO OFFICERS DISPATCHED via linked traffic. Check officer staleness or radius.")
+                                else:
+                                    print(f"[DISPATCH CREATE] ✓ Dispatching to {len(nearby)} officer(s) via linked traffic")
                                 for officer, dist in nearby:
                                     asg = crud.traffic_alert.create_assignment(
                                         db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                                     )
+                                    print(f"[DISPATCH CREATE] → Assigned officer {officer.user_id} at {dist:.2f}km (assignment {asg.id})")
                                     asyncio.create_task(manager.send_to_user(
                                         str(officer.user_id),
                                         {
@@ -403,9 +423,12 @@ async def create_detection(
                                             body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
                                             data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                         ))
+                            else:
+                                print(f"[DISPATCH CREATE] ⚠ Camera {camera.id} has no coordinates. Cannot dispatch via linked traffic.")
 
                     if not is_linked_to_traffic:
                         # Legacy assignment flow
+                        print(f"[DISPATCH CREATE] Legacy company flow: eligible={detection.eligible_for_assignment}, camera_org={camera.organization_id}")
                         detection.assignment_type = "company"
                         if detection.eligible_for_assignment and camera.organization_id:
                             detection.assigned_company_id = camera.organization_id
@@ -483,7 +506,13 @@ def get_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
     if current_user.role.name != "Super Admin":
         if detection.organization_id != current_user.organization_id:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            # Also allow if user has an assignment for this detection
+            has_assignment = db.query(models.DetectionAssignment).filter(
+                models.DetectionAssignment.detection_id == detection.id,
+                models.DetectionAssignment.user_id == current_user.id
+            ).first()
+            if not has_assignment:
+                raise HTTPException(status_code=403, detail="Not enough permissions")
     
     return _enrich_detection(db, detection)
 
@@ -592,15 +621,16 @@ async def update_detection(
             if throttle_key in _detection_throttle_cache:
                 last_trigger = _detection_throttle_cache[throttle_key]
                 elapsed = (now - last_trigger).total_seconds()
-                print(f"[THROTTLE] key={throttle_key}, elapsed={elapsed:.1f}s")
-                if elapsed < 300:  # 5 minutes
-                    is_throttled = True
+                print(f"[THROTTLE] key={throttle_key}, elapsed={elapsed:.1f}s (Anti-spam DISABLED for testing)")
+                # if elapsed < 300:  # 5 minutes
+                #     is_throttled = True
 
             new_snapshot = uploaded_proof_urls[0] if uploaded_proof_urls else f"https://picsum.photos/seed/{camera.id}_{int(now.timestamp())}/800/450"
 
             if is_throttled:
                 # ── THROTTLED: just append image to latest event, no notification ──
                 print(f"[THROTTLE] SUPPRESSED — aggregating image only")
+                detection.dispatch_message = f"Throttled: This vehicle was recently detected here. Wait {300 - elapsed:.0f}s before simulating another dispatch to avoid spam."
                 curr_events = list(detection.detection_events or [])
 
                 # Find the most recent event from this camera and append image
@@ -654,24 +684,28 @@ async def update_detection(
                                 lat=camera.lat, lng=camera.lng, radius_km=radius_km,
                                 include_external=include_external
                             )
+                            if len(nearby) == 0:
+                                detection.dispatch_message = f"No officers found within {radius_km}km radius or officers are stale (>5 min)."
+                            else:
+                                detection.dispatch_message = f"Dispatched to {len(nearby)} officer(s)."
                             for officer, dist in nearby:
                                 asg = crud.traffic_alert.create_assignment(
                                     db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                                 )
-                                asyncio.create_task(manager.send_to_user(
-                                    str(officer.user_id),
-                                    {
-                                        "type": "assignment_created",
-                                        "assignmentId": asg.id,
-                                        "detectionId": detection.id,
-                                        "cameraId": camera.id,
-                                        "cameraName": camera.name,
-                                        "distanceKm": dist,
-                                        "plateNumber": detection.plate_number,
-                                        "description": detection.description,
-                                        "timestamp": datetime.utcnow().isoformat()
-                                    }
-                                ))
+                                payload_data = {
+                                    "type": "assignment_created",
+                                    "assignmentId": asg.id,
+                                    "detectionId": detection.id,
+                                    "cameraId": camera.id,
+                                    "cameraName": camera.name,
+                                    "distanceKm": dist,
+                                    "plateNumber": detection.plate_number,
+                                    "description": detection.description,
+                                    "timestamp": datetime.utcnow().isoformat()
+                                }
+                                asyncio.create_task(manager.send_to_user(str(officer.user_id), payload_data))
+                                asyncio.create_task(manager.broadcast_to_org(str(detection.organization_id), payload_data))
+                                asyncio.create_task(manager.broadcast_to_org("None", payload_data))
                                 if getattr(officer.user, 'expo_push_token', None):
                                     asyncio.create_task(send_push_notification(
                                         expo_push_token=officer.user.expo_push_token,
@@ -679,6 +713,8 @@ async def update_detection(
                                         body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
                                         data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                     ))
+                        else:
+                            detection.dispatch_message = f"Camera location missing (lat/lng not set)."
                     else:
                         # ═══ NON-TRAFFIC COMPANY FLOW ═══
                         is_linked_to_traffic = False
@@ -702,25 +738,30 @@ async def update_detection(
                                     include_external=include_external
                                 )
                                 print(f"[TRAFFIC DISPATCH UPDATE] Found {len(nearby)} nearby officers")
+                                if len(nearby) == 0:
+                                    detection.dispatch_message = f"No officers found in linked traffic company within {radius_std}km or officers are stale."
+                                else:
+                                    detection.dispatch_message = f"Dispatched to {len(nearby)} linked traffic officer(s)."
                                 for officer, dist in nearby:
                                     print(f"[TRAFFIC DISPATCH UPDATE] → Officer {officer.user_id} at {dist:.2f}km")
                                     asg = crud.traffic_alert.create_assignment(
                                         db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                                     )
-                                    asyncio.create_task(manager.send_to_user(
-                                        str(officer.user_id),
-                                        {
-                                            "type": "assignment_created",
-                                            "assignmentId": asg.id,
-                                            "detectionId": detection.id,
-                                            "cameraId": camera.id,
-                                            "cameraName": camera.name,
-                                            "distanceKm": dist,
-                                            "plateNumber": detection.plate_number,
-                                            "description": detection.description,
-                                            "timestamp": datetime.utcnow().isoformat()
-                                        }
-                                    ))
+                                    payload_data = {
+                                        "type": "assignment_created",
+                                        "assignmentId": asg.id,
+                                        "detectionId": detection.id,
+                                        "cameraId": camera.id,
+                                        "cameraName": camera.name,
+                                        "distanceKm": dist,
+                                        "plateNumber": detection.plate_number,
+                                        "description": detection.description,
+                                        "timestamp": datetime.utcnow().isoformat()
+                                    }
+                                    asyncio.create_task(manager.send_to_user(str(officer.user_id), payload_data))
+                                    asyncio.create_task(manager.broadcast_to_org(str(linked_org.id), payload_data))
+                                    asyncio.create_task(manager.broadcast_to_org(str(detection.organization_id), payload_data))
+                                    asyncio.create_task(manager.broadcast_to_org("None", payload_data))
                                     if getattr(officer.user, 'expo_push_token', None):
                                         asyncio.create_task(send_push_notification(
                                             expo_push_token=officer.user.expo_push_token,
@@ -729,7 +770,12 @@ async def update_detection(
                                             data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                         ))
                                 if len(nearby) == 0:
-                                    print(f"[TRAFFIC DISPATCH UPDATE] ⚠ No online officers found near camera.")
+                                    print(f"[TRAFFIC DISPATCH UPDATE] ⚠ No online officers found.")
+                            else:
+                                if is_linked_to_traffic and not (camera.lat and camera.lng):
+                                    detection.dispatch_message = f"Camera location missing (lat/lng not set)."
+                                else:
+                                    detection.dispatch_message = f"Filter mismatch: Missing linked traffic company or invalid coordinates."
                         
                         if not is_linked_to_traffic:
                             detection.assignment_type = "company"
@@ -739,10 +785,12 @@ async def update_detection(
                             else:
                                 detection.assigned_company_id = detection.organization_id
                                 detection.handling_status = "pending"
+                else:
+                    # Target is ALREADY Dispatched.
+                    detection.dispatch_message = f"Skipped dispatch: Target is already actively assigned (handling status: {detection.handling_status})."
 
                 # ═══ RETROACTIVE REPAIR (For Detections without Officers) ═══
-                # ═══ RETROACTIVE REPAIR (For Detections without Officers) ═══
-                if detection.assignment_type == "user":
+                if detection.assignment_type == "user" and detection.handling_status != "unassigned":
                     existing_assignments = db.query(models.DetectionAssignment).filter(
                         models.DetectionAssignment.detection_id == detection.id
                     ).count()
@@ -768,20 +816,26 @@ async def update_detection(
                             asg = crud.traffic_alert.create_assignment(
                                 db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                             )
-                            asyncio.create_task(manager.send_to_user(
-                                str(officer.user_id),
-                                {
-                                    "type": "assignment_created",
-                                    "assignmentId": asg.id,
-                                    "detectionId": detection.id,
-                                    "cameraId": camera.id,
-                                    "cameraName": camera.name,
-                                    "distanceKm": dist,
-                                    "plateNumber": detection.plate_number,
-                                    "description": detection.description,
-                                    "timestamp": datetime.utcnow().isoformat()
-                                }
-                            ))
+                            payload_data = {
+                                "type": "assignment_created",
+                                "assignmentId": asg.id,
+                                "detectionId": detection.id,
+                                "cameraId": camera.id,
+                                "cameraName": camera.name,
+                                "distanceKm": dist,
+                                "plateNumber": detection.plate_number,
+                                "description": detection.description,
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                            asyncio.create_task(manager.send_to_user(str(officer.user_id), payload_data))
+                            asyncio.create_task(manager.broadcast_to_org(str(primary_org_id), payload_data))
+                            asyncio.create_task(manager.broadcast_to_org(str(detection.organization_id), payload_data))
+                            asyncio.create_task(manager.broadcast_to_org("None", payload_data))
+                        if existing_assignments == 0:
+                            if len(nearby) == 0:
+                                detection.dispatch_message = f"Retro-dispatch attempted but no officers found within {radius_val}km or officers are stale."
+                            else:
+                                detection.dispatch_message = f"Retro-dispatched to {len(nearby)} officer(s) because no previous assignments existed."
 
                 camera.is_flagged = True
                 

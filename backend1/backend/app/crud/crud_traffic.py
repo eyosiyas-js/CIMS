@@ -160,7 +160,8 @@ class CRUDDetectionAssignment:
             detection_id=detection_id,
             user_id=user_id,
             distance_at_assignment=distance_km,
-            status="assigned"
+            status="assigned",
+            assigned_at=datetime.utcnow()
         )
         db.add(db_obj)
         db.commit()

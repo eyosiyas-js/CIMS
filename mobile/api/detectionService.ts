@@ -29,6 +29,15 @@ export interface Detection {
   resolvedDynamicData?: Array<{ label: string; value: any }>;
   assignedCompanyId?: string;
   assignedCompanyName?: string;
+  assignmentType?: 'company' | 'user';
+  assignedOfficers?: Array<{
+    officerName: string;
+    officerEmail: string;
+    distanceKm?: number;
+    status: string;
+    assignmentId: string;
+    assignedAt?: string;
+  }>;
   eligibleForAssignment?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +63,8 @@ export interface Assignment {
     category: string;
     name: string;
     plateNumber?: string;
+    code?: string;
+    region?: string;
     description?: string;
     imageUrls?: string[];
   };
@@ -95,7 +106,11 @@ export const detectionService = {
       });
     }
 
-    const response = await apiClient.post(`/officers/assignments/${id}/close`, formData);
+    const response = await apiClient.post(`/officers/assignments/${id}/close`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   }
 };

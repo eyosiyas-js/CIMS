@@ -147,6 +147,8 @@ def get_assignment_detail(
             "category": det.category,
             "name": det.name,
             "plateNumber": det.plate_number,
+            "code": det.code,
+            "region": det.region,
             "description": det.description,
             "imageUrls": det.image_urls
         } if det else None,
@@ -198,6 +200,7 @@ def close_assignment(
     if det and det.handling_status not in ["resolved", "failed"]:
         internal_status = "resolved" if status == "closed_resolved" else "failed"
         det.handling_status = internal_status
+        det.status = internal_status
         if notes:
             det.handling_notes = notes
         if updated_assignment.proof_urls:
@@ -205,14 +208,13 @@ def close_assignment(
         db.commit()
         
         # Broadcast assignment closed event to dashboard
-        asyncio.create_task(manager.broadcast_to_org(
-            str(det.organization_id),
-            {
-                "type": "assignment_updated",
-                "detectionId": det.id,
-                "status": internal_status
-            }
-        ))
+        event_payload = {
+            "type": "assignment_updated",
+            "detectionId": det.id,
+            "status": internal_status
+        }
+        asyncio.create_task(manager.broadcast_to_org(str(det.organization_id), event_payload))
+        asyncio.create_task(manager.broadcast_to_org("None", event_payload))
 
     return {"msg": "Assignment closed", "status": updated_assignment.status}
 

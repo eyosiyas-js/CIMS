@@ -116,6 +116,15 @@ export default function DetectionPage() {
   const deleteDetection = useDeleteDetection();
   const { data: activeTemplate } = useActiveFormTemplate();
 
+  useEffect(() => {
+    if (selectedDetection) {
+      const updated = detections.find(d => d.id === selectedDetection.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedDetection)) {
+        setSelectedDetection(updated);
+      }
+    }
+  }, [detections, selectedDetection]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles: File[] = [];

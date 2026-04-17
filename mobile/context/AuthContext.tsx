@@ -9,6 +9,7 @@ interface User {
     role: string;
     organizationId: string;
     organizationName?: string;
+    companyType?: string;
 }
 
 interface AuthContextType {

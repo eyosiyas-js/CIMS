@@ -49,10 +49,11 @@ export default function DetectionDetailsScreen() {
   const actionMutation = useMutation({
     mutationFn: (payload: { status: "closed_resolved" | "closed_failed", notes?: string, proofFiles?: any[] }) =>
       detectionService.handleAssignmentAction(id as string, payload),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(['assignment', id], updated);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assignment', id] });
       queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
       Alert.alert('Success', `Task status updated successfully.`);
+      router.back();
     },
     onError: (err: any) => {
       const errorMsg = err.response?.data?.detail || err.message || 'Unknown error';
@@ -62,7 +63,11 @@ export default function DetectionDetailsScreen() {
   });
 
   const handleStatusChange = (newStatus: "closed_resolved" | "closed_failed") => {
-    // Note: Parity with web - notes are technically optional in the dialog but recommended
+    if (selectedProofImages.length === 0) {
+      Alert.alert('Evidence Required', 'You must upload at least one piece of image evidence before closing this incident.');
+      return;
+    }
+
     actionMutation.mutate({
       status: newStatus,
       notes: notes,
@@ -92,6 +97,18 @@ export default function DetectionDetailsScreen() {
     }
   };
 
+  useEffect(() => {
+    if (mapRef.current && assignment?.cameraInfo?.lat && userLocation) {
+      mapRef.current.fitToCoordinates(
+        [
+          { latitude: assignment.cameraInfo.lat, longitude: assignment.cameraInfo.lng },
+          userLocation
+        ],
+        { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true }
+      );
+    }
+  }, [userLocation, assignment]);
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -118,18 +135,6 @@ export default function DetectionDetailsScreen() {
       latitudeDelta: 0.005,
       longitudeDelta: 0.005,
   };
-
-  useEffect(() => {
-    if (mapRef.current && assignment?.cameraInfo?.lat && userLocation) {
-      mapRef.current.fitToCoordinates(
-        [
-          { latitude: assignment.cameraInfo.lat, longitude: assignment.cameraInfo.lng },
-          userLocation
-        ],
-        { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true }
-      );
-    }
-  }, [userLocation, assignment]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -188,8 +193,16 @@ export default function DetectionDetailsScreen() {
                 <Text style={styles.attrValue}>{assignment.detectionInfo?.category || "Standard"}</Text>
              </View>
              <View style={styles.attributeBox}>
-                <Text style={styles.attrLabel}>Age Group</Text>
-                <Text style={styles.attrValue}>{"Unknown"}</Text>
+                <Text style={styles.attrLabel}>Plate Number</Text>
+                <Text style={styles.attrValue}>{assignment.detectionInfo?.plateNumber || "Unknown"}</Text>
+             </View>
+             <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '50%' }]}>
+                <Text style={styles.attrLabel}>Region</Text>
+                <Text style={styles.attrValue}>{assignment.detectionInfo?.region || "N/A"}</Text>
+             </View>
+             <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '50%' }]}>
+                <Text style={styles.attrLabel}>Code</Text>
+                <Text style={styles.attrValue}>{assignment.detectionInfo?.code || "N/A"}</Text>
              </View>
              {assignment.detectionInfo?.description && (
                 <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '100%' }]}>
@@ -240,53 +253,48 @@ export default function DetectionDetailsScreen() {
                 <Text style={styles.panelTitle}>Operations Control</Text>
              </View>
             
-            {assignment.status === 'assigned' ? (
-                <View style={styles.pendingAction}>
-                    <Text style={styles.pendingText}>This incident was automatically assigned and is waiting for your team's response.</Text>
-                    <TouchableOpacity 
-                        style={styles.startBtn} 
-                        onPress={() => handleStatusChange('closed_resolved')}
-                        disabled={actionMutation.isPending}
-                    >
-                        {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.startBtnText}>Mark as Resolved</Text>}
-                    </TouchableOpacity>
-                </View>
-            ) : (
-                <View style={styles.resolutionLogic}>
-                    <Text style={styles.label}>Notes (Optional)</Text>
-                    <TextInput 
-                        style={styles.notesInput}
-                        multiline
-                        placeholder="Detail your operational activity and findings..."
-                        value={notes}
-                        onChangeText={setNotes}
-                    />
-                    
-                    <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
-                        <Camera size={18} color="#8E8E93" />
-                        <Text style={styles.uploadText}>Attach Proof Photos ({selectedProofImages.length} selected)</Text>
-                    </TouchableOpacity>
+             <View style={styles.resolutionLogic}>
+                 <Text style={styles.label}>Notes (Optional)</Text>
+                 <TextInput 
+                     style={styles.notesInput}
+                     multiline
+                     placeholder="Detail your operational activity and findings..."
+                     value={notes}
+                     onChangeText={setNotes}
+                 />
+                 
+                 <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
+                     <Camera size={18} color="#8E8E93" />
+                     <Text style={styles.uploadText}>Attach Proof Photos ({selectedProofImages.length} selected)</Text>
+                 </TouchableOpacity>
 
-                    <View style={styles.dualControls}>
-                        <TouchableOpacity 
-                            style={[styles.smallCtrl, styles.resolveCtrl]}
-                            onPress={() => handleStatusChange('closed_resolved')}
-                            disabled={actionMutation.isPending}
-                        >
-                            <CheckCircle2 size={18} color="#fff" />
-                            <Text style={styles.ctrlText}>Resolve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.smallCtrl, styles.failCtrl]}
-                            onPress={() => handleStatusChange('closed_failed')}
-                            disabled={actionMutation.isPending}
-                        >
-                            <AlertCircle size={18} color="#fff" />
-                            <Text style={styles.ctrlText}>Fail</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
+                 <View style={styles.dualControls}>
+                     <TouchableOpacity 
+                         style={[styles.smallCtrl, styles.resolveCtrl]}
+                         onPress={() => handleStatusChange('closed_resolved')}
+                         disabled={actionMutation.isPending}
+                     >
+                         {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
+                             <>
+                                 <CheckCircle2 size={18} color="#fff" />
+                                 <Text style={styles.ctrlText}>Resolve</Text>
+                             </>
+                         )}
+                     </TouchableOpacity>
+                     <TouchableOpacity 
+                         style={[styles.smallCtrl, styles.failCtrl]}
+                         onPress={() => handleStatusChange('closed_failed')}
+                         disabled={actionMutation.isPending}
+                     >
+                         {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
+                             <>
+                                 <AlertCircle size={18} color="#fff" />
+                                 <Text style={styles.ctrlText}>Fail</Text>
+                             </>
+                         )}
+                     </TouchableOpacity>
+                 </View>
+             </View>
           </View>
         )}
 

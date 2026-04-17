@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions } from 'rea
 import { useRouter } from 'expo-router';
 import { Shield, MapPin, Camera as CameraIcon, Clock, ChevronRight } from 'lucide-react-native';
 import { Detection, resolveUrl } from '../api/detectionService';
+import { useAuth } from '../context/AuthContext';
 // Removed expo-linear-gradient to prevent bundling errors - using standard View for overlay instead
 
 interface DetectionCardProps {
@@ -21,16 +22,25 @@ const { width } = Dimensions.get('window');
 
 export default function DetectionCard({ detection }: DetectionCardProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const status = statusConfig[detection.handlingStatus || 'unassigned'] || statusConfig.unassigned;
   
   const mainScreenshot = detection.imageUrls?.[0] || detection.detectionEvents?.[0]?.snapshotUrl;
   const sourceCamera = detection.detectionEvents?.[0]?.cameraName || "Unknown Camera";
 
+  let targetId = detection.id;
+  if (detection.assignmentType === 'user' && detection.assignedOfficers) {
+    const myAssignment = detection.assignedOfficers.find(o => o.officerEmail === user?.email);
+    if (myAssignment) {
+      targetId = myAssignment.assignmentId;
+    }
+  }
+
   return (
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.9}
-      onPress={() => router.push(`/assigned/${detection.id}`)}
+      onPress={() => router.push(`/assigned/${targetId}`)}
     >
       {/* Card Image Header */}
       <View style={styles.imageContainer}>

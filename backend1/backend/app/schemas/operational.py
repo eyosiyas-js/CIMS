@@ -108,6 +108,8 @@ class Detection(DetectionBase):
     resolvedDynamicData: Optional[List[dict]] = []
     assignedCompanyName: Optional[str] = None
     assignedOfficers: Optional[List[dict]] = None
+    dispatchMessage: Optional[str] = None
+    assignmentType: Optional[str] = None
 
     class Config:
         from_attributes = True

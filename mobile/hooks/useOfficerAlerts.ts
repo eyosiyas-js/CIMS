@@ -33,20 +33,24 @@ export function useOfficerAlerts() {
           const data = JSON.parse(event.data);
           
           if (data.type === 'assignment_created' || data.type === 'traffic_alert') {
-            // Play notification sound
-            // const { sound } = await Audio.Sound.createAsync(require('../assets/alert.mp3'));
-            // await sound.playAsync();
-
             console.log('New traffic alert received:', data);
             
             // Invalidate alerts query to fetch new alerts
             queryClient.invalidateQueries({ queryKey: ['officer-alerts'] });
+            // Also refresh the Assigned tab
+            queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
           }
           
           if (data.type === 'assignment_updated') {
             console.log('Assignment updated:', data);
             queryClient.invalidateQueries({ queryKey: ['officer-alerts'] });
             queryClient.invalidateQueries({ queryKey: ['officer-alert'] });
+            queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
+          }
+
+          if (data.type === 'new_detection') {
+            console.log('New detection received:', data);
+            queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
           }
         } catch (e) {
           console.error('Error parsing alert message', e);

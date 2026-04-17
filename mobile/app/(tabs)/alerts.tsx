@@ -76,17 +76,21 @@ export default function AlertsScreen() {
         showsUserLocation={true}
         showsMyLocationButton={true}
       >
-        {activeAlerts.map(alert => {
+        {activeAlerts.map((alert, index) => {
           if (!alert.cameraInfo?.lat || !alert.cameraInfo?.lng) return null;
           
+          // Apply a microscopic offset to prevent identical coordinates from stacking perfectly
+          const offsetLat = alert.cameraInfo.lat + (index * 0.00015);
+          const offsetLng = alert.cameraInfo.lng + (index * 0.00015);
+
           return (
             <Marker
               key={alert.id}
-              coordinate={{ latitude: alert.cameraInfo.lat, longitude: alert.cameraInfo.lng }}
+              coordinate={{ latitude: offsetLat, longitude: offsetLng }}
               title={alert.detectionInfo?.plateNumber || 'Alert'}
               description={alert.status}
               pinColor={'red'}
-              onCalloutPress={() => router.push(`/alerts/${alert.id}`)}
+              onCalloutPress={() => router.push(`/assigned/${alert.id}`)}
             />
           );
         })}

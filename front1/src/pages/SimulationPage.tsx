@@ -112,7 +112,8 @@ export default function SimulationPage() {
         } else if (detectionData.assignedCompanyName) {
           console.log('[SIMULATION] Assigned to company:', detectionData.assignedCompanyName);
         } else {
-          console.log('[SIMULATION] Warning: No officers or company assigned. Assigned officers:', detectionData.assignedOfficers);
+          const reason = (detectionData as any).dispatchMessage || 'No specific reason found in API response';
+          console.log(`[SIMULATION] Warning: No officers or company assigned.\nReason: ${reason}`);
         }
         setSelectedStandardImage(null);
       } else {

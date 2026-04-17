@@ -16,9 +16,15 @@ export default function AssignedScreen() {
     queryKey: ['assigned-detections', user?.organizationId],
     queryFn: async () => {
       const allDetections = await detectionService.getDetections();
-      // Parity check: Filter matching the web's logic
+      // Filter: show detections assigned to this company OR user-level assignments (traffic)
       const assignedCompanyId = user?.organizationId || (user as any)?.organization_id || (user as any)?.companyId;
-      return allDetections.filter(d => d.assignedCompanyId === assignedCompanyId);
+      return allDetections.filter(d => {
+        if (d.assignmentType === 'user') {
+          if (!d.assignedOfficers || d.assignedOfficers.length === 0) return false;
+          return d.assignedOfficers.some(o => o.officerEmail === user?.email);
+        }
+        return d.assignedCompanyId === assignedCompanyId;
+      });
     },
     enabled: !!user?.organizationId,
   });
