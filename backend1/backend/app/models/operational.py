@@ -51,6 +51,7 @@ class Detection(Base, TimestampMixin):
     region = Column(String, nullable=True)  # Ethiopian region code (AA, OR, AM, etc.)
     
     assigned_company_id = Column(String, ForeignKey("organization.id"), nullable=True)
+    assignment_type = Column(String, default="company") # company, user
     handling_status = Column(String, default="unassigned") # unassigned, pending, in_progress, resolved, failed
     eligible_for_assignment = Column(Boolean, default=True)
     allow_external_assignment = Column(Boolean, default=False) # Traffic: if True, dispatch to officers from ALL traffic companies
@@ -61,6 +62,7 @@ class Detection(Base, TimestampMixin):
     organization = relationship("Organization", back_populates="detections", foreign_keys=[organization_id])
     assigned_company = relationship("Organization", foreign_keys=[assigned_company_id], overlaps="assigned_detections")
     form_template = relationship("FormTemplate", back_populates="detections")
+    assignments = relationship("DetectionAssignment", back_populates="detection", cascade="all, delete-orphan")
     
     face_embedding = Column(LargeBinary, nullable=True)
 
@@ -125,20 +127,16 @@ class OfficerLocation(Base, TimestampMixin):
     user = relationship("User", back_populates="officer_location")
     organization = relationship("Organization")
 
-class TrafficAlert(Base, TimestampMixin):
+class DetectionAssignment(Base, TimestampMixin):
     id = Column(String, primary_key=True, index=True)
     detection_id = Column(String, ForeignKey("detection.id"))
-    officer_id = Column(String, ForeignKey("user.id"))
-    camera_id = Column(String, ForeignKey("camera.id"))
-    organization_id = Column(String, ForeignKey("organization.id"))
-    status = Column(String, default="dispatched") # dispatched, accepted, en_route, on_scene, resolved, failed, expired
-    distance_km = Column(Float)
+    user_id = Column(String, ForeignKey("user.id"))
+    distance_at_assignment = Column(Float)
+    status = Column(String, default="assigned") # assigned, closed_resolved, closed_failed
     notes = Column(String, nullable=True)
     proof_urls = Column(JSON, nullable=True)
-    accepted_at = Column(DateTime, nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
+    assigned_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
     
-    detection = relationship("Detection")
-    officer = relationship("User", back_populates="traffic_alerts")
-    camera = relationship("Camera")
-    organization = relationship("Organization")
+    detection = relationship("Detection", back_populates="assignments")
+    user = relationship("User", back_populates="detection_assignments")

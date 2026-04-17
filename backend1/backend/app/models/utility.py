@@ -23,3 +23,9 @@ class FormTemplate(Base, TimestampMixin):
     
     organization = relationship("Organization", back_populates="templates")
     detections = relationship("Detection", back_populates="form_template")
+
+class SystemSetting(Base, TimestampMixin):
+    key = Column(String, primary_key=True, index=True)
+    value = Column(JSON)
+    description = Column(String)
+

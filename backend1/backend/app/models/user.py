@@ -17,4 +17,4 @@ class User(Base, TimestampMixin):
     notifications = relationship("Notification", back_populates="user")
     detections = relationship("Detection", back_populates="user")
     officer_location = relationship("OfficerLocation", uselist=False, back_populates="user", cascade="all, delete-orphan")
-    traffic_alerts = relationship("TrafficAlert", back_populates="officer", cascade="all, delete-orphan")
+    detection_assignments = relationship("DetectionAssignment", back_populates="user", cascade="all, delete-orphan")

@@ -1,6 +1,7 @@
 import shutil
 import uuid
 import os
+import asyncio
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
@@ -70,30 +71,33 @@ def get_location_status(
         "lng": loc.lng
     }
 
-@router.get("/alerts")
-def get_alerts(
+@router.get("/assignments")
+def get_assignments(
     status: Optional[str] = None,
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ) -> Any:
     """
-    Get active alerts for the current officer.
+    Get active assignments for the current officer.
     """
-    alerts = crud.traffic_alert.get_officer_alerts(db, officer_id=current_user.id, status=status)
+    assignments = crud.traffic_alert.get_user_assignments(db, user_id=current_user.id, status=status)
     result = []
-    for a in alerts:
+    for a in assignments:
         det = a.detection
-        cam = a.camera
+        cam = None
+        if det and det.detected_camera_ids:
+            cam = db.query(models.Camera).filter(models.Camera.id == det.detected_camera_ids[-1]).first()
+            
         result.append({
             "id": a.id,
             "detectionId": a.detection_id,
-            "cameraId": a.camera_id,
+            "cameraId": cam.id if cam else "Unknown",
             "cameraName": cam.name if cam else "Unknown",
-            "distanceKm": a.distance_km,
+            "distanceKm": a.distance_at_assignment,
             "status": a.status,
             "notes": a.notes,
             "proofUrls": a.proof_urls,
-            "createdAt": a.created_at.isoformat() if a.created_at else None,
+            "createdAt": a.assigned_at.isoformat() if a.assigned_at else None,
             "detectionInfo": {
                 "category": det.category,
                 "name": det.name,
@@ -108,35 +112,37 @@ def get_alerts(
         })
     return result
 
-@router.get("/alerts/{id}")
-def get_alert_detail(
+@router.get("/assignments/{id}")
+def get_assignment_detail(
     id: str,
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ) -> Any:
     """
-    Get specific alert details.
+    Get specific assignment details.
     """
-    alert = crud.traffic_alert.get_alert(db, alert_id=id)
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    if alert.officer_id != current_user.id:
+    assignment = crud.traffic_alert.get_assignment(db, assignment_id=id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
-    det = alert.detection
-    cam = alert.camera
+    det = assignment.detection
+    cam = None
+    if det and det.detected_camera_ids:
+        cam = db.query(models.Camera).filter(models.Camera.id == det.detected_camera_ids[-1]).first()
+        
     return {
-        "id": alert.id,
-        "detectionId": alert.detection_id,
-        "cameraId": alert.camera_id,
+        "id": assignment.id,
+        "detectionId": assignment.detection_id,
+        "cameraId": cam.id if cam else "Unknown",
         "cameraName": cam.name if cam else "Unknown",
-        "distanceKm": alert.distance_km,
-        "status": alert.status,
-        "notes": alert.notes,
-        "proofUrls": alert.proof_urls,
-        "createdAt": alert.created_at.isoformat() if alert.created_at else None,
-        "acceptedAt": alert.accepted_at.isoformat() if alert.accepted_at else None,
-        "resolvedAt": alert.resolved_at.isoformat() if alert.resolved_at else None,
+        "distanceKm": assignment.distance_at_assignment,
+        "status": assignment.status,
+        "notes": assignment.notes,
+        "proofUrls": assignment.proof_urls,
+        "createdAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+        "closedAt": assignment.closed_at.isoformat() if assignment.closed_at else None,
         "detectionInfo": {
             "category": det.category,
             "name": det.name,
@@ -150,8 +156,8 @@ def get_alert_detail(
         } if cam else None
     }
 
-@router.post("/alerts/{id}/respond")
-def respond_to_alert(
+@router.post("/assignments/{id}/close")
+def close_assignment(
     id: str,
     status: str = Form(...),
     notes: Optional[str] = Form(None),
@@ -160,18 +166,19 @@ def respond_to_alert(
     current_user: models.User = Depends(deps.get_current_user),
 ) -> Any:
     """
-    Respond to an alert (accept, update status, resolve, fail) with optional proof.
+    Close an assignment (resolve or fail) with optional proof.
     """
-    alert = crud.traffic_alert.get_alert(db, alert_id=id)
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    if alert.officer_id != current_user.id:
+    assignment = crud.traffic_alert.get_assignment(db, assignment_id=id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    valid_statuses = ["accepted", "en_route", "on_scene", "resolved", "failed"]
+    valid_statuses = ["closed_resolved", "closed_failed"]
     if status not in valid_statuses:
-        raise HTTPException(status_code=400, detail="Invalid status transition")
+        raise HTTPException(status_code=400, detail="Invalid status transition. Must be closed_resolved or closed_failed")
 
+    # If the detection is already handled, you can still close it locally, but parent isn't overwritten.
     proof_urls = []
     if proofFiles:
         for imageFile in proofFiles:
@@ -182,22 +189,32 @@ def respond_to_alert(
                 shutil.copyfileobj(imageFile.file, buffer)
             proof_urls.append(f"/uploads/{unique_filename}")
 
-    updated_alert = crud.traffic_alert.update_alert_status(
-        db, alert_id=id, status=status, notes=notes, proof_urls=proof_urls if proof_urls else None
+    updated_assignment = crud.traffic_alert.update_assignment_status(
+        db, assignment_id=id, status=status, notes=notes, proof_urls=proof_urls if proof_urls else None
     )
 
-    # Sync detection's handling status globally
-    if status in ["resolved", "failed"]:
-        det = alert.detection
-        if det:
-            det.handling_status = status
-            if notes:
-                det.handling_notes = notes
-            if updated_alert.proof_urls:
-                det.handling_proof_urls = updated_alert.proof_urls
-            db.commit()
+    # First-to-close behavior syncs parent detection globally
+    det = assignment.detection
+    if det and det.handling_status not in ["resolved", "failed"]:
+        internal_status = "resolved" if status == "closed_resolved" else "failed"
+        det.handling_status = internal_status
+        if notes:
+            det.handling_notes = notes
+        if updated_assignment.proof_urls:
+            det.handling_proof_urls = updated_assignment.proof_urls
+        db.commit()
+        
+        # Broadcast assignment closed event to dashboard
+        asyncio.create_task(manager.broadcast_to_org(
+            str(det.organization_id),
+            {
+                "type": "assignment_updated",
+                "detectionId": det.id,
+                "status": internal_status
+            }
+        ))
 
-    return {"msg": "Alert status updated", "status": updated_alert.status}
+    return {"msg": "Assignment closed", "status": updated_assignment.status}
 
 @router.get("/nearby")
 def get_nearby_officers(

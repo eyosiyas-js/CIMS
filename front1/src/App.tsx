@@ -25,6 +25,7 @@ import UserManagement from "./pages/admin/UserManagement";
 import RoleManagement from "./pages/admin/RoleManagement";
 import FormBuilder from "./pages/admin/FormBuilder";
 import DeviceManagement from "./pages/admin/DeviceManagement";
+import SystemConfig from "./pages/admin/SystemConfig";
 import WeaponDetectionPage from "./pages/WeaponDetectionPage";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,7 @@ const App = () => (
             <Route path="/admin/roles" element={<ProtectedRoute><RoleManagement /></ProtectedRoute>} />
             <Route path="/admin/forms" element={<ProtectedRoute><FormBuilder /></ProtectedRoute>} />
             <Route path="/admin/devices" element={<ProtectedRoute><DeviceManagement /></ProtectedRoute>} />
+            <Route path="/admin/settings" element={<ProtectedRoute><SystemConfig /></ProtectedRoute>} />
 
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />

@@ -145,5 +145,10 @@ export const API_ENDPOINTS = {
       companies: `${API_BASE_URL}/admin/analytics/companies`,
       cameras: `${API_BASE_URL}/admin/analytics/cameras`,
     },
+    // GET /admin/settings, PUT /admin/settings/:key
+    settings: {
+      list: `${API_BASE_URL}/admin/settings`,
+      update: (key: string) => `${API_BASE_URL}/admin/settings/${key}`,
+    },
   },
 } as const;

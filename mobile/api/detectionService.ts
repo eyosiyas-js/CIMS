@@ -39,8 +39,32 @@ export interface Detection {
   region?: string;
 }
 
+export interface Assignment {
+  id: string;
+  detectionId: string;
+  cameraId: string;
+  cameraName: string;
+  distanceKm: number;
+  status: string;
+  notes?: string;
+  proofUrls?: string[];
+  createdAt: string;
+  closedAt?: string;
+  detectionInfo?: {
+    category: string;
+    name: string;
+    plateNumber?: string;
+    description?: string;
+    imageUrls?: string[];
+  };
+  cameraInfo?: {
+    lat: number;
+    lng: number;
+  };
+}
+
 export interface DetectionActionPayload {
-  status: "in_progress" | "resolved" | "failed";
+  status: "closed_resolved" | "closed_failed";
   notes?: string;
   proofFiles?: any[];
 }
@@ -51,12 +75,12 @@ export const detectionService = {
     return response.data;
   },
 
-  getDetectionDetail: async (id: string): Promise<Detection> => {
-    const response = await apiClient.get(`/detections/${id}`);
+  getAssignmentDetail: async (id: string): Promise<Assignment> => {
+    const response = await apiClient.get(`/officers/assignments/${id}`);
     return response.data;
   },
 
-  handleDetectionAction: async (id: string, payload: DetectionActionPayload): Promise<Detection> => {
+  handleAssignmentAction: async (id: string, payload: DetectionActionPayload): Promise<any> => {
     const formData = new FormData();
     formData.append('status', payload.status);
     if (payload.notes) formData.append('notes', payload.notes);
@@ -71,9 +95,7 @@ export const detectionService = {
       });
     }
 
-    // axios-native will automatically add the correct multipart/form-data boundary 
-    // IF we don't have a default Content-Type header.
-    const response = await apiClient.post(`/detections/${id}/action`, formData);
+    const response = await apiClient.post(`/officers/assignments/${id}/close`, formData);
     return response.data;
   }
 };

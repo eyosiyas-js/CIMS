@@ -21,6 +21,7 @@ const superAdminItems = [
   { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Companies", url: "/admin/companies", icon: Building2 },
   { title: "Global Analytics", url: "/admin/analytics", icon: BarChart3 },
+  { title: "System Settings", url: "/admin/settings", icon: Cpu },
 ];
 
 const companyAdminItems = [

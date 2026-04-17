@@ -1,19 +1,20 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, SafeAreaView, Image, Modal, Dimensions, FlatList, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { detectionService, resolveUrl, Detection } from '../../api/detectionService';
+import { detectionService, resolveUrl, Assignment } from '../../api/detectionService';
 import { ChevronLeft, Calendar, User, FileText, CheckCircle2, AlertTriangle, Info, MapPin, AlertCircle, X, Maximize2, Shield, Clock, Camera, Navigation } from 'lucide-react-native';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width } = Dimensions.get('window');
 
 const statusConfig: any = {
   unassigned: { bg: '#8E8E9320', text: '#8E8E93', label: 'Unassigned' },
-  pending: { bg: '#FF3B3015', text: '#FF3B30', label: 'Pending Action' },
-  in_progress: { bg: '#FF950015', text: '#FF9500', label: 'In Progress' },
-  resolved: { bg: '#34C75915', text: '#34C759', label: 'Incident Resolved' },
-  failed: { bg: '#FF3B3015', text: '#FF3B30', label: 'Incident Failed' },
+  assigned: { bg: '#FF3B3015', text: '#FF3B30', label: 'Pending Action' },
+  closed_resolved: { bg: '#34C75915', text: '#34C759', label: 'Incident Resolved' },
+  closed_failed: { bg: '#FF3B3015', text: '#FF3B30', label: 'Incident Failed' },
 };
 
 export default function DetectionDetailsScreen() {
@@ -24,20 +25,34 @@ export default function DetectionDetailsScreen() {
   const [notes, setNotes] = useState('');
   const [selectedProofImages, setSelectedProofImages] = useState<any[]>([]); // Future: add expo-image-picker
   const [isExpandingImage, setIsExpandingImage] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const mapRef = useRef<MapView>(null);
 
-  const { data: detection, isLoading, refetch } = useQuery({
-    queryKey: ['detection', id],
-    queryFn: () => detectionService.getDetectionDetail(id as string),
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      let loc = await Location.getCurrentPositionAsync({});
+      setUserLocation({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+    })();
+  }, []);
+
+  const { data: assignment, isLoading, refetch } = useQuery({
+    queryKey: ['assignment', id],
+    queryFn: () => detectionService.getAssignmentDetail(id as string),
     enabled: !!id,
   });
 
   const actionMutation = useMutation({
-    mutationFn: (payload: { status: "in_progress" | "resolved" | "failed", notes?: string, proofFiles?: any[] }) =>
-      detectionService.handleDetectionAction(id as string, payload),
+    mutationFn: (payload: { status: "closed_resolved" | "closed_failed", notes?: string, proofFiles?: any[] }) =>
+      detectionService.handleAssignmentAction(id as string, payload),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['detection', id], updated);
+      queryClient.setQueryData(['assignment', id], updated);
       queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
-      Alert.alert('Success', `Task status updated to ${updated.handlingStatus?.replace('_', ' ')}`);
+      Alert.alert('Success', `Task status updated successfully.`);
     },
     onError: (err: any) => {
       const errorMsg = err.response?.data?.detail || err.message || 'Unknown error';
@@ -46,7 +61,7 @@ export default function DetectionDetailsScreen() {
     }
   });
 
-  const handleStatusChange = (newStatus: "in_progress" | "resolved" | "failed") => {
+  const handleStatusChange = (newStatus: "closed_resolved" | "closed_failed") => {
     // Note: Parity with web - notes are technically optional in the dialog but recommended
     actionMutation.mutate({
       status: newStatus,
@@ -55,9 +70,20 @@ export default function DetectionDetailsScreen() {
     });
   };
 
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setSelectedProofImages([...selectedProofImages, ...result.assets]);
+    }
+  };
+
   const openInMaps = () => {
-    const lat = latestEvent?.lat;
-    const lng = latestEvent?.lng;
+    const lat = assignment?.cameraInfo?.lat;
+    const lng = assignment?.cameraInfo?.lng;
     if (lat && lng) {
       const url = `https://www.google.com/maps?q=${lat},${lng}`;
       Linking.openURL(url);
@@ -75,25 +101,35 @@ export default function DetectionDetailsScreen() {
     );
   }
 
-  if (!detection) return null;
+  if (!assignment) return null;
 
-  const currentStatus = statusConfig[detection.handlingStatus || 'unassigned'] || statusConfig.unassigned;
-  const isFinalized = detection.handlingStatus === 'resolved' || detection.handlingStatus === 'failed';
+  const currentStatus = statusConfig[assignment.status || 'assigned'] || statusConfig.unassigned;
+  const isFinalized = assignment.status === 'closed_resolved' || assignment.status === 'closed_failed';
 
   // Gather all images (reference images + snapshots + proof photos)
   const allImages = [
-    ...(detection.imageUrls || []),
-    ...(detection.detectionEvents?.map(e => e.snapshotUrl) || []),
-    ...(detection.handlingProofUrls || [])
+    ...(assignment.detectionInfo?.imageUrls || []),
+    ...(assignment.proofUrls || [])
   ].filter(Boolean);
 
-  const latestEvent = detection.detectionEvents?.[0]; // Show the first event as the main trigger
   const region = {
-      latitude: latestEvent?.lat || -1.286389,
-      longitude: latestEvent?.lng || 36.817223,
+      latitude: assignment.cameraInfo?.lat || -1.286389,
+      longitude: assignment.cameraInfo?.lng || 36.817223,
       latitudeDelta: 0.005,
       longitudeDelta: 0.005,
   };
+
+  useEffect(() => {
+    if (mapRef.current && assignment?.cameraInfo?.lat && userLocation) {
+      mapRef.current.fitToCoordinates(
+        [
+          { latitude: assignment.cameraInfo.lat, longitude: assignment.cameraInfo.lng },
+          userLocation
+        ],
+        { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true }
+      );
+    }
+  }, [userLocation, assignment]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -112,14 +148,14 @@ export default function DetectionDetailsScreen() {
               {currentStatus.label}
             </Text>
           </View>
-          <Text style={styles.idText}>ID: #{detection.id.split('-')[0].toUpperCase()}</Text>
+          <Text style={styles.idText}>ID: #{assignment.detectionId.split('-')[0].toUpperCase()}</Text>
         </View>
 
         <View style={styles.titleSection}>
-          <Text style={styles.categoryLabel}>{detection.category}</Text>
-          <Text style={styles.title}>{detection.name}</Text>
-          {detection.description && (
-            <Text style={styles.description}>"{detection.description}"</Text>
+          <Text style={styles.categoryLabel}>{assignment.detectionInfo?.category}</Text>
+          <Text style={styles.title}>{assignment.detectionInfo?.name}</Text>
+          {assignment.detectionInfo?.description && (
+            <Text style={styles.description}>"{assignment.detectionInfo.description}"</Text>
           )}
         </View>
 
@@ -127,12 +163,12 @@ export default function DetectionDetailsScreen() {
           <View style={styles.metaRow}>
             <Clock size={16} color="#8E8E93" />
             <Text style={styles.metaLabel}>Timestamp</Text>
-            <Text style={styles.metaValue}>{new Date(detection.createdAt).toLocaleString()}</Text>
+            <Text style={styles.metaValue}>{new Date(assignment.createdAt).toLocaleString()}</Text>
           </View>
           <View style={styles.metaRow}>
             <Camera size={16} color="#8E8E93" />
             <Text style={styles.metaLabel}>Camera</Text>
-            <Text style={styles.metaValue}>{latestEvent?.cameraName || 'Unknown Source'}</Text>
+            <Text style={styles.metaValue}>{assignment.cameraName || 'Unknown Source'}</Text>
           </View>
           <View style={styles.metaRow}>
             <Navigation size={16} color="#8E8E93" />
@@ -149,45 +185,32 @@ export default function DetectionDetailsScreen() {
           <View style={styles.attributeGrid}>
              <View style={styles.attributeBox}>
                 <Text style={styles.attrLabel}>Sub-Category</Text>
-                <Text style={styles.attrValue}>{detection.subcategory?.replace('_', ' ') || "Standard"}</Text>
+                <Text style={styles.attrValue}>{assignment.detectionInfo?.category || "Standard"}</Text>
              </View>
              <View style={styles.attributeBox}>
                 <Text style={styles.attrLabel}>Age Group</Text>
-                <Text style={styles.attrValue}>{detection.age || "N/A"}</Text>
+                <Text style={styles.attrValue}>{"Unknown"}</Text>
              </View>
-             {detection.crimeType && (
+             {assignment.detectionInfo?.description && (
                 <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '100%' }]}>
                     <Text style={styles.attrLabel}>Incident Type</Text>
-                    <Text style={[styles.attrValue, { color: '#FF3B30' }]}>{detection.crimeType}</Text>
+                    <Text style={[styles.attrValue, { color: '#FF3B30' }]}>{assignment.detectionInfo.description}</Text>
                 </View>
              )}
           </View>
         </View>
-
-        {/* Dynamic Data Grid */}
-        {detection.resolvedDynamicData && detection.resolvedDynamicData.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Operational Information</Text>
-            <View style={styles.dataGrid}>
-              {detection.resolvedDynamicData.map((d, i) => (
-                <View key={i} style={styles.dataItem}>
-                  <Text style={styles.dataLabel}>{d.label}</Text>
-                  <Text style={styles.dataValue}>{String(d.value)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
 
         {/* Map Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trigger Point</Text>
           <View style={styles.mapContainer}>
             <MapView
+              ref={mapRef}
               style={styles.map}
               initialRegion={region}
             >
-              <Marker coordinate={{ latitude: region.latitude, longitude: region.longitude }} />
+              <Marker coordinate={{ latitude: region.latitude, longitude: region.longitude }} pinColor="red" />
+              {userLocation && <Marker coordinate={userLocation} pinColor="blue" title="You are here" />}
             </MapView>
           </View>
         </View>
@@ -217,15 +240,15 @@ export default function DetectionDetailsScreen() {
                 <Text style={styles.panelTitle}>Operations Control</Text>
              </View>
             
-            {detection.handlingStatus === 'pending' ? (
+            {assignment.status === 'assigned' ? (
                 <View style={styles.pendingAction}>
                     <Text style={styles.pendingText}>This incident was automatically assigned and is waiting for your team's response.</Text>
                     <TouchableOpacity 
                         style={styles.startBtn} 
-                        onPress={() => handleStatusChange('in_progress')}
+                        onPress={() => handleStatusChange('closed_resolved')}
                         disabled={actionMutation.isPending}
                     >
-                        {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.startBtnText}>Start Operational Response</Text>}
+                        {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.startBtnText}>Mark as Resolved</Text>}
                     </TouchableOpacity>
                 </View>
             ) : (
@@ -239,16 +262,15 @@ export default function DetectionDetailsScreen() {
                         onChangeText={setNotes}
                     />
                     
-                    {/* Placeholder for Photo Attachments */}
-                    <TouchableOpacity style={styles.uploadBtn}>
+                    <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
                         <Camera size={18} color="#8E8E93" />
-                        <Text style={styles.uploadText}>Attach Proof Photos (Optional)</Text>
+                        <Text style={styles.uploadText}>Attach Proof Photos ({selectedProofImages.length} selected)</Text>
                     </TouchableOpacity>
 
                     <View style={styles.dualControls}>
                         <TouchableOpacity 
                             style={[styles.smallCtrl, styles.resolveCtrl]}
-                            onPress={() => handleStatusChange('resolved')}
+                            onPress={() => handleStatusChange('closed_resolved')}
                             disabled={actionMutation.isPending}
                         >
                             <CheckCircle2 size={18} color="#fff" />
@@ -256,7 +278,7 @@ export default function DetectionDetailsScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity 
                             style={[styles.smallCtrl, styles.failCtrl]}
-                            onPress={() => handleStatusChange('failed')}
+                            onPress={() => handleStatusChange('closed_failed')}
                             disabled={actionMutation.isPending}
                         >
                             <AlertCircle size={18} color="#fff" />
@@ -276,10 +298,10 @@ export default function DetectionDetailsScreen() {
                     <Text style={styles.bannerTitle}>Incident Finalized</Text>
                 </View>
                 <Text style={styles.bannerSubtitle}>This request has been completed and archived for history.</Text>
-                {detection.handlingNotes && (
+                {assignment.notes && (
                     <View style={styles.finalNotes}>
                         <Text style={styles.finalNotesLabel}>Official Findings:</Text>
-                        <Text style={styles.finalNotesText}>{detection.handlingNotes}</Text>
+                        <Text style={styles.finalNotesText}>{assignment.notes}</Text>
                     </View>
                 )}
             </View>

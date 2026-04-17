@@ -27,17 +27,17 @@ export default function AlertsScreen() {
   });
 
   const renderAlertCard = ({ item }: { item: any }) => {
-    const isNew = item.status === 'dispatched';
-    const isAccepted = item.status === 'accepted' || item.status === 'en_route' || item.status === 'on_scene';
+    const isActive = item.status === 'assigned';
+    const isClosed = item.status === 'closed_resolved' || item.status === 'closed_failed';
 
     let cardColor = '#FFFFFF';
     let borderColor = '#E5E5EA';
     
-    if (isNew) {
+    if (isActive) {
       borderColor = '#FF3B30';
       cardColor = '#FFF5F5';
-    } else if (isAccepted) {
-      borderColor = '#FF9500';
+    } else if (isClosed) {
+      borderColor = item.status === 'closed_resolved' ? '#34C759' : '#8E8E93';
     }
 
     return (
@@ -47,12 +47,12 @@ export default function AlertsScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.badgeContainer}>
-             {isNew ? <AlertTriangle size={16} color="#FF3B30" /> : <Navigation size={16} color="#FF9500" />}
-             <Text style={[styles.statusText, { color: isNew ? '#FF3B30' : '#FF9500' }]}>
-               {item.status.replace('_', ' ').toUpperCase()}
+             {isActive ? <AlertTriangle size={16} color="#FF3B30" /> : <Navigation size={16} color="#34C759" />}
+             <Text style={[styles.statusText, { color: isActive ? '#FF3B30' : '#34C759' }]}>
+               {item.status.replace(/_/g, ' ').toUpperCase()}
              </Text>
           </View>
-          <Text style={styles.distanceText}>{item.distanceKm.toFixed(1)} km away</Text>
+          <Text style={styles.distanceText}>{item.distanceKm?.toFixed(1)} km away</Text>
         </View>
 
         <Text style={styles.plateText}>{item.detectionInfo?.plateNumber || 'Unknown Vehicle'}</Text>
@@ -66,7 +66,7 @@ export default function AlertsScreen() {
     );
   };
 
-  const activeAlerts = alerts?.filter(a => ['dispatched', 'accepted', 'en_route', 'on_scene'].includes(a.status)) || [];
+  const activeAlerts = alerts?.filter((a: any) => a.status === 'assigned') || [];
 
   return (
     <View style={styles.container}>
@@ -79,15 +79,13 @@ export default function AlertsScreen() {
         {activeAlerts.map(alert => {
           if (!alert.cameraInfo?.lat || !alert.cameraInfo?.lng) return null;
           
-          const isNew = alert.status === 'dispatched';
-          
           return (
             <Marker
               key={alert.id}
               coordinate={{ latitude: alert.cameraInfo.lat, longitude: alert.cameraInfo.lng }}
               title={alert.detectionInfo?.plateNumber || 'Alert'}
               description={alert.status}
-              pinColor={isNew ? 'red' : 'orange'}
+              pinColor={'red'}
               onCalloutPress={() => router.push(`/alerts/${alert.id}`)}
             />
           );

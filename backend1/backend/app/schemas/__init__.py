@@ -20,3 +20,4 @@ from app.schemas.operational import (
 from app.schemas.personal import HistoryItem, OfficerSchema, UserProfileUpdate, PasswordUpdate, UsernameUpdate
 from app.schemas.token import Token, TokenPayload, Msg
 from app.schemas.notification import Notification, NotificationCreate, NotificationUpdate
+from app.schemas.system_setting import SystemSetting, SystemSettingCreate, SystemSettingUpdate

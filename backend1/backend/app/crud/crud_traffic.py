@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-from app.models.operational import OfficerLocation, TrafficAlert
+from app.models.operational import OfficerLocation, DetectionAssignment
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371  # Earth radius in km
@@ -74,6 +74,10 @@ class CRUDOfficerLocation:
 
         five_mins_ago = datetime.utcnow() - timedelta(minutes=5)
         
+        print(f"[DISPATCH] === Officer Search Start ===")
+        print(f"[DISPATCH] Camera coords: ({lat}, {lng}), radius: {radius_km}km, include_external: {include_external}")
+        print(f"[DISPATCH] Primary org: {primary_org_id}, staleness cutoff: {five_mins_ago}")
+        
         if include_external:
             # Get all traffic_police organization IDs
             traffic_orgs = db.query(Organization.id).filter(
@@ -81,6 +85,15 @@ class CRUDOfficerLocation:
                 Organization.status == "active"
             ).all()
             traffic_org_ids = [o.id for o in traffic_orgs]
+            print(f"[DISPATCH] External mode: searching {len(traffic_org_ids)} traffic orgs: {traffic_org_ids}")
+            
+            # First check ALL officers in these orgs (regardless of online/staleness)
+            all_officers_in_orgs = db.query(OfficerLocation).filter(
+                OfficerLocation.organization_id.in_(traffic_org_ids)
+            ).all()
+            print(f"[DISPATCH] Total OfficerLocation rows in target orgs: {len(all_officers_in_orgs)}")
+            for o in all_officers_in_orgs:
+                print(f"[DISPATCH]   - user={o.user_id}, online={o.is_online}, last_seen={o.last_seen}, lat={o.lat}, lng={o.lng}")
             
             online_officers = db.query(OfficerLocation).filter(
                 OfficerLocation.organization_id.in_(traffic_org_ids),
@@ -88,14 +101,46 @@ class CRUDOfficerLocation:
                 OfficerLocation.last_seen >= five_mins_ago
             ).all()
         else:
+            # First check ALL officers in this org (regardless of online/staleness)
+            all_officers_in_org = db.query(OfficerLocation).filter(
+                OfficerLocation.organization_id == primary_org_id
+            ).all()
+            print(f"[DISPATCH] Total OfficerLocation rows in org {primary_org_id}: {len(all_officers_in_org)}")
+            for o in all_officers_in_org:
+                age_str = ""
+                if o.last_seen:
+                    age_seconds = (datetime.utcnow() - o.last_seen).total_seconds()
+                    age_str = f", age={age_seconds:.0f}s"
+                    if age_seconds > 300:
+                        print(f"[DISPATCH]   - user={o.user_id}, online={o.is_online}, last_seen={o.last_seen}{age_str} [STALE > 5min]")
+                    else:
+                        print(f"[DISPATCH]   - user={o.user_id}, online={o.is_online}, last_seen={o.last_seen}{age_str} [FRESH]")
+                else:
+                    print(f"[DISPATCH]   - user={o.user_id}, online={o.is_online}, last_seen=None [NO TIMESTAMP]")
+                if not o.is_online:
+                    print(f"[DISPATCH]     ^ EXCLUDED: is_online=False")
+            
             online_officers = self.get_online_officers(db, primary_org_id)
+        
+        print(f"[DISPATCH] Officers passing online+freshness filter: {len(online_officers)}")
+        if len(online_officers) == 0:
+            if len(all_officers_in_org if not include_external else all_officers_in_orgs) == 0:
+                print(f"[DISPATCH] REASON: No OfficerLocation records exist for this org. Officers must send POST /officers/location first.")
+            else:
+                print(f"[DISPATCH] REASON: Officers exist but are STALE (last_seen > 5 min ago) or OFFLINE (is_online=False).")
         
         nearby = []
         for officer in online_officers:
             dist = haversine_km(lat, lng, officer.lat, officer.lng)
+            print(f"[DISPATCH] Officer {officer.user_id}: distance={dist:.2f}km, radius={radius_km}km, in_range={'YES' if dist <= radius_km else 'NO'}")
             if dist <= radius_km:
                 nearby.append((officer, dist))
+        
+        if len(online_officers) > 0 and len(nearby) == 0:
+            print(f"[DISPATCH] REASON: {len(online_officers)} officer(s) are online but ALL are outside the {radius_km}km radius.")
+        
         nearby.sort(key=lambda x: x[1])
+        print(f"[DISPATCH] === Result: {len(nearby)} officer(s) dispatched ===")
         return nearby
 
     def set_offline(self, db: Session, user_id: str) -> Optional[OfficerLocation]:
@@ -106,47 +151,42 @@ class CRUDOfficerLocation:
             db.refresh(db_obj)
         return db_obj
 
-class CRUDTrafficAlert:
-    def create_alert(
-        self, db: Session, detection_id: str, officer_id: str, camera_id: str, 
-        org_id: str, distance_km: float
-    ) -> TrafficAlert:
-        db_obj = TrafficAlert(
-            id=f"alert-{uuid.uuid4()}",
+class CRUDDetectionAssignment:
+    def create_assignment(
+        self, db: Session, detection_id: str, user_id: str, distance_km: float
+    ) -> DetectionAssignment:
+        db_obj = DetectionAssignment(
+            id=f"asg-{uuid.uuid4()}",
             detection_id=detection_id,
-            officer_id=officer_id,
-            camera_id=camera_id,
-            organization_id=org_id,
-            distance_km=distance_km,
-            status="dispatched"
+            user_id=user_id,
+            distance_at_assignment=distance_km,
+            status="assigned"
         )
         db.add(db_obj)
         db.commit()
         db.refresh(db_obj)
         return db_obj
 
-    def get_officer_alerts(self, db: Session, officer_id: str, status: Optional[str] = None) -> List[TrafficAlert]:
-        query = db.query(TrafficAlert).filter(TrafficAlert.officer_id == officer_id)
+    def get_user_assignments(self, db: Session, user_id: str, status: Optional[str] = None) -> List[DetectionAssignment]:
+        query = db.query(DetectionAssignment).filter(DetectionAssignment.user_id == user_id)
         if status:
-            query = query.filter(TrafficAlert.status == status)
-        return query.order_by(TrafficAlert.created_at.desc()).all()
+            query = query.filter(DetectionAssignment.status == status)
+        return query.order_by(DetectionAssignment.created_at.desc()).all()
         
-    def get_alert(self, db: Session, alert_id: str) -> Optional[TrafficAlert]:
-        return db.query(TrafficAlert).filter(TrafficAlert.id == alert_id).first()
+    def get_assignment(self, db: Session, assignment_id: str) -> Optional[DetectionAssignment]:
+        return db.query(DetectionAssignment).filter(DetectionAssignment.id == assignment_id).first()
 
-    def update_alert_status(
-        self, db: Session, alert_id: str, status: str, notes: Optional[str] = None, proof_urls: Optional[List[str]] = None
-    ) -> Optional[TrafficAlert]:
-        db_obj = self.get_alert(db, alert_id)
+    def update_assignment_status(
+        self, db: Session, assignment_id: str, status: str, notes: Optional[str] = None, proof_urls: Optional[List[str]] = None
+    ) -> Optional[DetectionAssignment]:
+        db_obj = self.get_assignment(db, assignment_id)
         if not db_obj:
             return None
         
         db_obj.status = status
         
-        if status == "accepted":
-            db_obj.accepted_at = datetime.utcnow()
-        elif status in ["resolved", "failed"]:
-            db_obj.resolved_at = datetime.utcnow()
+        if status in ["closed_resolved", "closed_failed"]:
+            db_obj.closed_at = datetime.utcnow()
             
         if notes is not None:
             db_obj.notes = notes
@@ -161,16 +201,16 @@ class CRUDTrafficAlert:
         db.refresh(db_obj)
         return db_obj
 
-    def expire_stale_alerts(self, db: Session, timeout_minutes: int = 10) -> int:
+    def expire_stale_assignments(self, db: Session, timeout_minutes: int = 120) -> int:
         timeout_threshold = datetime.utcnow() - timedelta(minutes=timeout_minutes)
-        stale_alerts = db.query(TrafficAlert).filter(
-            TrafficAlert.status == "dispatched",
-            TrafficAlert.created_at <= timeout_threshold
+        stale_assignments = db.query(DetectionAssignment).filter(
+            DetectionAssignment.status == "assigned",
+            DetectionAssignment.created_at <= timeout_threshold
         ).all()
         
-        count = len(stale_alerts)
-        for alert in stale_alerts:
-            alert.status = "expired"
+        count = len(stale_assignments)
+        for asg in stale_assignments:
+            asg.status = "closed_failed"
         
         if count > 0:
             db.commit()
@@ -178,4 +218,4 @@ class CRUDTrafficAlert:
         return count
 
 officer_location = CRUDOfficerLocation()
-traffic_alert = CRUDTrafficAlert()
+traffic_alert = CRUDDetectionAssignment()

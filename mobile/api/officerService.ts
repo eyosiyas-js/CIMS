@@ -24,12 +24,12 @@ export const officerService = {
   },
 
   getAlerts: async (status?: string) => {
-    const response = await apiClient.get('/officers/alerts', { params: { status } });
+    const response = await apiClient.get('/officers/assignments', { params: { status } });
     return response.data;
   },
 
   getAlertDetail: async (id: string) => {
-    const response = await apiClient.get(`/officers/alerts/${id}`);
+    const response = await apiClient.get(`/officers/assignments/${id}`);
     return response.data;
   },
 
@@ -48,7 +48,12 @@ export const officerService = {
       });
     }
 
-    const response = await apiClient.post(`/officers/alerts/${id}/respond`, formData);
+    const response = await apiClient.post(`/officers/assignments/${id}/close`, formData);
+    return response.data;
+  },
+
+  updateAssignmentStatus: async (id: string, status: string) => {
+    const response = await apiClient.patch(`/officers/assignments/${id}/status`, { status });
     return response.data;
   }
 };

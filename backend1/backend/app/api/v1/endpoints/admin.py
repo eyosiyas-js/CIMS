@@ -1313,3 +1313,53 @@ def _resolve_org_ids(db: Session, current_user, company_id: Optional[str], inclu
             org_ids = [target_org_id]
     return org_ids
 
+# --- System Settings ---
+
+@router.get("/settings", response_model=List[schemas.SystemSetting])
+def get_system_settings(
+    db: Session = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.PermissionChecker("settings.view")),
+) -> Any:
+    """
+    Get all system-wide settings. Super Admin only.
+    """
+    if current_user.role.name != "Super Admin":
+        raise HTTPException(status_code=403, detail="Only Super Admins can access system settings")
+    return db.query(models.SystemSetting).all()
+
+@router.get("/settings/{key}", response_model=schemas.SystemSetting)
+def get_system_setting(
+    key: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.PermissionChecker("settings.view")),
+) -> Any:
+    """
+    Get a specific system-wide setting.
+    """
+    if current_user.role.name != "Super Admin":
+        raise HTTPException(status_code=403, detail="Only Super Admins can access system settings")
+    setting = crud.system_setting.get(db, key=key)
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    return setting
+
+@router.put("/settings/{key}", response_model=schemas.SystemSetting)
+def update_system_setting(
+    *,
+    key: str,
+    obj_in: schemas.SystemSettingUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.PermissionChecker("settings.manage")),
+) -> Any:
+    """
+    Update a dynamic system setting. Create if not exists.
+    """
+    if current_user.role.name != "Super Admin":
+        raise HTTPException(status_code=403, detail="Only Super Admins can change system settings")
+    
+    setting = crud.system_setting.get(db, key=key)
+    if not setting:
+        return crud.system_setting.create(db, obj_in=schemas.SystemSettingCreate(key=key, **obj_in.model_dump()))
+    
+    return crud.system_setting.update(db, db_obj=setting, obj_in=obj_in)
+

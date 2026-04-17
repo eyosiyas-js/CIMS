@@ -64,6 +64,21 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
             description: data.message,
           });
         }
+
+        // Handle assignment events — refresh detection data so officer info shows up
+        if (data.type === 'assignment_created') {
+          queryClient.invalidateQueries({ queryKey: ['detections'] });
+          toast.info('Officer Dispatched', {
+            description: `Officer dispatched ${data.distanceKm ? `(${Number(data.distanceKm).toFixed(1)} km)` : ''} to ${data.plateNumber || 'detection'}`,
+          });
+        }
+
+        if (data.type === 'assignment_updated') {
+          queryClient.invalidateQueries({ queryKey: ['detections'] });
+          toast.info('Assignment Updated', {
+            description: `Detection status changed to ${data.status || 'updated'}`,
+          });
+        }
       } catch (err) {
         console.error('Error parsing WebSocket message:', err);
       }

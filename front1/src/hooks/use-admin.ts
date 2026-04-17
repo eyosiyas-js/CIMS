@@ -8,6 +8,7 @@ import {
   getDevices, getAnalyticsData, getDetailedAnalytics, getRawSubmissions,
   getCrimeTypeAnalytics, getCompanyComparison, getPerformanceMetrics,
   toggleCameraAccess, getCameraAccessOrgs, createCamera, updateCamera, deleteCamera,
+  getSystemSettings, updateSystemSetting,
   type DashboardStats, type AnalyticsFilter,
 } from "@/api/services/adminService";
 import type { Company, AdminUser, Role, CaseFormTemplate } from "@/data/adminMockData";
@@ -211,6 +212,23 @@ export function usePerformanceMetrics(filters: AnalyticsFilter = {}) {
   return useQuery({
     queryKey: ["admin", "analytics", "performance", filters],
     queryFn: () => getPerformanceMetrics(filters)
+  });
+}
+
+// ── System Settings ────────────────────────────────
+export function useSystemSettings() {
+  return useQuery({ 
+    queryKey: ["admin", "settings"], 
+    queryFn: getSystemSettings 
+  });
+}
+
+export function useUpdateSystemSetting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value, description }: { key: string; value: any; description?: string }) => 
+      updateSystemSetting(key, value, description),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "settings"] }),
   });
 }
 

@@ -1,7 +1,7 @@
 from typing import Any, List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-import numpy as np
+import struct
 from app import models, schemas
 from app.api import deps
 
@@ -52,8 +52,9 @@ def get_public_detections(
         if d.face_embedding:
             try:
                 # Convert bytes back to list of floats
-                # Detection stored 512 floats (float32)
-                vector = np.frombuffer(d.face_embedding, dtype=np.float32).tolist()
+                # Detection stored floats (float32)
+                num_floats = len(d.face_embedding) // 4
+                vector = list(struct.unpack(f"{num_floats}f", d.face_embedding))
                 det_data["faceEmbedding"] = vector
             except Exception:
                 det_data["faceEmbedding"] = None

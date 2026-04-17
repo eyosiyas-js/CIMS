@@ -48,28 +48,29 @@ def _enrich_detection(db: Session, detection: models.Detection) -> dict:
         "eligibleForAssignment": detection.eligible_for_assignment
     }
     
-    if detection.assigned_company_id:
+    data["assignmentType"] = getattr(detection, "assignment_type", "company")
+    
+    if data["assignmentType"] == "user":
+        data["assignedCompanyName"] = None
+        assignments = db.query(models.DetectionAssignment).filter(
+            models.DetectionAssignment.detection_id == detection.id
+        ).all()
+        officers_list = []
+        for asg in assignments:
+            officer_user = asg.user
+            officers_list.append({
+                "officerName": officer_user.full_name if officer_user else "Unknown",
+                "officerEmail": officer_user.email if officer_user else "",
+                "distanceKm": round(asg.distance_at_assignment, 2) if asg.distance_at_assignment else None,
+                "status": asg.status,
+                "assignmentId": asg.id,
+                "assignedAt": asg.assigned_at.isoformat() if asg.assigned_at else None
+            })
+        data["assignedOfficers"] = officers_list
+    elif detection.assigned_company_id:
         assigned_org = db.query(models.Organization).filter(models.Organization.id == detection.assigned_company_id).first()
         if assigned_org:
             data["assignedCompanyName"] = assigned_org.name
-            
-            # For traffic companies, populate assignedOfficers from TrafficAlert records
-            if assigned_org.company_type == "traffic_police":
-                alerts = db.query(models.TrafficAlert).filter(
-                    models.TrafficAlert.detection_id == detection.id
-                ).all()
-                officers_list = []
-                for alert in alerts:
-                    officer_user = alert.officer
-                    officers_list.append({
-                        "officerName": officer_user.full_name if officer_user else "Unknown",
-                        "officerEmail": officer_user.email if officer_user else "",
-                        "distanceKm": round(alert.distance_km, 2) if alert.distance_km else None,
-                        "status": alert.status,
-                        "alertId": alert.id,
-                        "assignedAt": alert.created_at.isoformat() if alert.created_at else None
-                    })
-                data["assignedOfficers"] = officers_list
     # Vehicle-specific fields
     data["plateNumber"] = detection.plate_number
     data["code"] = detection.code
@@ -315,29 +316,30 @@ async def create_detection(
 
                 if is_traffic_org and detection.category == "vehicle":
                     # ═══ TRAFFIC COMPANY FLOW ═══
-                    # Assign to same company (the traffic company itself)
-                    detection.assigned_company_id = detection.organization_id
+                    # Assign to users (traffic officers) - NOT companies
+                    detection.assigned_company_id = None
+                    detection.assignment_type = "user"
                     detection.handling_status = "pending"
                     
                     # Dispatch to nearby officers (geo proximity)
                     if camera.lat and camera.lng:
                         include_external = detection.allow_external_assignment
+                        radius_km = crud.system_setting.get_value(db, "assignment_radius_traffic", 10.0)
                         nearby = crud.officer_location.find_nearby_officers_multi(
                             db, primary_org_id=detection.organization_id,
-                            lat=camera.lat, lng=camera.lng, radius_km=2.0,
+                            lat=camera.lat, lng=camera.lng, radius_km=radius_km,
                             include_external=include_external
                         )
                         for officer, dist in nearby:
-                            alert = crud.traffic_alert.create_alert(
-                                db, detection_id=detection.id, officer_id=officer.user_id, 
-                                camera_id=camera.id, org_id=officer.organization_id, distance_km=dist
+                            asg = crud.traffic_alert.create_assignment(
+                                db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                             )
                             # WebSocket push
                             asyncio.create_task(manager.send_to_user(
                                 str(officer.user_id),
                                 {
-                                    "type": "traffic_alert",
-                                    "alertId": alert.id,
+                                    "type": "assignment_created",
+                                    "assignmentId": asg.id,
                                     "detectionId": detection.id,
                                     "cameraId": camera.id,
                                     "cameraName": camera.name,
@@ -353,64 +355,64 @@ async def create_detection(
                                     expo_push_token=officer.user.expo_push_token,
                                     title="🚨 Traffic Alert: " + (detection.plate_number or "Unknown Vehicle"),
                                     body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
-                                    data={"route": f"/alerts/{alert.id}", "alertId": alert.id, "detectionId": detection.id}
+                                    data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                 ))
                 else:
                     # ═══ NON-TRAFFIC COMPANY FLOW ═══
+                    is_linked_to_traffic = False
                     if camera.linked_traffic_company_id and detection.category == "vehicle":
-                        # Check if the linked company is a traffic_police org
                         linked_org = db.query(models.Organization).filter(
                             models.Organization.id == camera.linked_traffic_company_id
                         ).first()
-                        detection.assigned_company_id = camera.linked_traffic_company_id
-                        detection.handling_status = "pending"
-                        
-                        # If the linked company IS traffic_police → dispatch to its officers
-                        if linked_org and linked_org.company_type == "traffic_police" and camera.lat and camera.lng:
-                            print(f"[TRAFFIC DISPATCH] Camera {camera.name} (lat={camera.lat}, lng={camera.lng}) linked to traffic company '{linked_org.name}' (id={linked_org.id})")
-                            include_external = detection.allow_external_assignment
-                            nearby = crud.officer_location.find_nearby_officers_multi(
-                                db, primary_org_id=linked_org.id,
-                                lat=camera.lat, lng=camera.lng, radius_km=5.0,
-                                include_external=include_external
-                            )
-                            print(f"[TRAFFIC DISPATCH] Found {len(nearby)} nearby officers (external={include_external})")
-                            for officer, dist in nearby:
-                                print(f"[TRAFFIC DISPATCH] → Officer {officer.user_id} (org={officer.organization_id}) at {dist:.2f}km")
-                                alert = crud.traffic_alert.create_alert(
-                                    db, detection_id=detection.id, officer_id=officer.user_id,
-                                    camera_id=camera.id, org_id=officer.organization_id, distance_km=dist
+                        if linked_org and linked_org.company_type == "traffic_police":
+                            is_linked_to_traffic = True
+                            detection.assigned_company_id = None
+                            detection.assignment_type = "user"
+                            detection.handling_status = "pending"
+                            
+                            if camera.lat and camera.lng:
+                                include_external = detection.allow_external_assignment
+                                radius_std = crud.system_setting.get_value(db, "assignment_radius_standard", 5.0)
+                                nearby = crud.officer_location.find_nearby_officers_multi(
+                                    db, primary_org_id=linked_org.id,
+                                    lat=camera.lat, lng=camera.lng, radius_km=radius_std,
+                                    include_external=include_external
                                 )
-                                print(f"[TRAFFIC DISPATCH]   Created TrafficAlert id={alert.id}")
-                                asyncio.create_task(manager.send_to_user(
-                                    str(officer.user_id),
-                                    {
-                                        "type": "traffic_alert",
-                                        "alertId": alert.id,
-                                        "detectionId": detection.id,
-                                        "cameraId": camera.id,
-                                        "cameraName": camera.name,
-                                        "distanceKm": dist,
-                                        "plateNumber": detection.plate_number,
-                                        "description": detection.description,
-                                        "timestamp": datetime.utcnow().isoformat()
-                                    }
-                                ))
-                                if getattr(officer.user, 'expo_push_token', None):
-                                    asyncio.create_task(send_push_notification(
-                                        expo_push_token=officer.user.expo_push_token,
-                                        title="🚨 Traffic Alert: " + (detection.plate_number or "Unknown Vehicle"),
-                                        body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
-                                        data={"route": f"/alerts/{alert.id}", "alertId": alert.id, "detectionId": detection.id}
+                                for officer, dist in nearby:
+                                    asg = crud.traffic_alert.create_assignment(
+                                        db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
+                                    )
+                                    asyncio.create_task(manager.send_to_user(
+                                        str(officer.user_id),
+                                        {
+                                            "type": "assignment_created",
+                                            "assignmentId": asg.id,
+                                            "detectionId": detection.id,
+                                            "cameraId": camera.id,
+                                            "cameraName": camera.name,
+                                            "distanceKm": dist,
+                                            "plateNumber": detection.plate_number,
+                                            "description": detection.description,
+                                            "timestamp": datetime.utcnow().isoformat()
+                                        }
                                     ))
-                            if len(nearby) == 0:
-                                print(f"[TRAFFIC DISPATCH] ⚠ No online officers found near camera. Check OfficerLocation records.")
-                    elif detection.eligible_for_assignment and camera.organization_id:
-                        detection.assigned_company_id = camera.organization_id
-                        detection.handling_status = "pending"
-                    else:
-                        detection.assigned_company_id = detection.organization_id
-                        detection.handling_status = "pending"
+                                    if getattr(officer.user, 'expo_push_token', None):
+                                        asyncio.create_task(send_push_notification(
+                                            expo_push_token=officer.user.expo_push_token,
+                                            title="🚨 Traffic Alert: " + (detection.plate_number or "Unknown Vehicle"),
+                                            body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
+                                            data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
+                                        ))
+
+                    if not is_linked_to_traffic:
+                        # Legacy assignment flow
+                        detection.assignment_type = "company"
+                        if detection.eligible_for_assignment and camera.organization_id:
+                            detection.assigned_company_id = camera.organization_id
+                            detection.handling_status = "pending"
+                        else:
+                            detection.assigned_company_id = detection.organization_id
+                            detection.handling_status = "pending"
 
             camera.is_flagged = True
             
@@ -640,26 +642,27 @@ async def update_detection(
 
                     if is_traffic_org and detection.category == "vehicle":
                         # ═══ TRAFFIC COMPANY FLOW ═══
-                        detection.assigned_company_id = detection.organization_id
+                        detection.assigned_company_id = None
+                        detection.assignment_type = "user"
                         detection.handling_status = "pending"
                         
                         if camera.lat and camera.lng:
                             include_external = detection.allow_external_assignment
+                            radius_km = crud.system_setting.get_value(db, "assignment_radius_traffic", 10.0)
                             nearby = crud.officer_location.find_nearby_officers_multi(
                                 db, primary_org_id=detection.organization_id,
-                                lat=camera.lat, lng=camera.lng, radius_km=2.0,
+                                lat=camera.lat, lng=camera.lng, radius_km=radius_km,
                                 include_external=include_external
                             )
                             for officer, dist in nearby:
-                                alert = crud.traffic_alert.create_alert(
-                                    db, detection_id=detection.id, officer_id=officer.user_id,
-                                    camera_id=camera.id, org_id=officer.organization_id, distance_km=dist
+                                asg = crud.traffic_alert.create_assignment(
+                                    db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                                 )
                                 asyncio.create_task(manager.send_to_user(
                                     str(officer.user_id),
                                     {
-                                        "type": "traffic_alert",
-                                        "alertId": alert.id,
+                                        "type": "assignment_created",
+                                        "assignmentId": asg.id,
                                         "detectionId": detection.id,
                                         "cameraId": camera.id,
                                         "cameraName": camera.name,
@@ -672,39 +675,43 @@ async def update_detection(
                                 if getattr(officer.user, 'expo_push_token', None):
                                     asyncio.create_task(send_push_notification(
                                         expo_push_token=officer.user.expo_push_token,
-                                        title="🚨 Traffic Alert: " + (detection.plate_number or "Unknown Vehicle"),
+                                        title="🚨 Traffic Assignment: " + (detection.plate_number or "Unknown Vehicle"),
                                         body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
-                                        data={"route": f"/alerts/{alert.id}", "alertId": alert.id, "detectionId": detection.id}
+                                        data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                     ))
                     else:
                         # ═══ NON-TRAFFIC COMPANY FLOW ═══
+                        is_linked_to_traffic = False
                         if camera.linked_traffic_company_id and detection.category == "vehicle":
                             linked_org = db.query(models.Organization).filter(
                                 models.Organization.id == camera.linked_traffic_company_id
                             ).first()
-                            detection.assigned_company_id = camera.linked_traffic_company_id
-                            detection.handling_status = "pending"
                             
                             if linked_org and linked_org.company_type == "traffic_police" and camera.lat and camera.lng:
+                                is_linked_to_traffic = True
+                                detection.assigned_company_id = None
+                                detection.assignment_type = "user"
+                                detection.handling_status = "pending"
+                                
                                 print(f"[TRAFFIC DISPATCH UPDATE] Camera {camera.name} linked to traffic company '{linked_org.name}'")
                                 include_external = detection.allow_external_assignment
+                                radius_std = crud.system_setting.get_value(db, "assignment_radius_standard", 5.0)
                                 nearby = crud.officer_location.find_nearby_officers_multi(
                                     db, primary_org_id=linked_org.id,
-                                    lat=camera.lat, lng=camera.lng, radius_km=5.0,
+                                    lat=camera.lat, lng=camera.lng, radius_km=radius_std,
                                     include_external=include_external
                                 )
                                 print(f"[TRAFFIC DISPATCH UPDATE] Found {len(nearby)} nearby officers")
                                 for officer, dist in nearby:
                                     print(f"[TRAFFIC DISPATCH UPDATE] → Officer {officer.user_id} at {dist:.2f}km")
-                                    alert = crud.traffic_alert.create_alert(
-                                        db, detection_id=detection.id, officer_id=officer.user_id,
-                                        camera_id=camera.id, org_id=officer.organization_id, distance_km=dist
+                                    asg = crud.traffic_alert.create_assignment(
+                                        db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                                     )
                                     asyncio.create_task(manager.send_to_user(
                                         str(officer.user_id),
                                         {
-                                            "type": "traffic_alert",
-                                            "alertId": alert.id,
+                                            "type": "assignment_created",
+                                            "assignmentId": asg.id,
                                             "detectionId": detection.id,
                                             "cameraId": camera.id,
                                             "cameraName": camera.name,
@@ -717,56 +724,64 @@ async def update_detection(
                                     if getattr(officer.user, 'expo_push_token', None):
                                         asyncio.create_task(send_push_notification(
                                             expo_push_token=officer.user.expo_push_token,
-                                            title="🚨 Traffic Alert: " + (detection.plate_number or "Unknown Vehicle"),
+                                            title="🚨 Traffic Assignment: " + (detection.plate_number or "Unknown Vehicle"),
                                             body=f"Flagged vehicle detected {dist:.1f} km away at {camera.name}.",
-                                            data={"route": f"/alerts/{alert.id}", "alertId": alert.id, "detectionId": detection.id}
+                                            data={"route": f"/assigned/{asg.id}", "assignmentId": asg.id, "detectionId": detection.id}
                                         ))
                                 if len(nearby) == 0:
                                     print(f"[TRAFFIC DISPATCH UPDATE] ⚠ No online officers found near camera.")
-                        elif detection.eligible_for_assignment and camera.organization_id:
-                            detection.assigned_company_id = camera.organization_id
-                            detection.handling_status = "pending"
-                        else:
-                            detection.assigned_company_id = detection.organization_id
-                            detection.handling_status = "pending"
+                        
+                        if not is_linked_to_traffic:
+                            detection.assignment_type = "company"
+                            if detection.eligible_for_assignment and camera.organization_id:
+                                detection.assigned_company_id = camera.organization_id
+                                detection.handling_status = "pending"
+                            else:
+                                detection.assigned_company_id = detection.organization_id
+                                detection.handling_status = "pending"
 
                 # ═══ RETROACTIVE REPAIR (For Detections without Officers) ═══
-                if detection.assigned_company_id:
-                    assigned_org = db.query(models.Organization).filter(
-                        models.Organization.id == detection.assigned_company_id
-                    ).first()
-                    if assigned_org and assigned_org.company_type == "traffic_police":
-                        existing_alerts = db.query(models.TrafficAlert).filter(
-                            models.TrafficAlert.detection_id == detection.id
-                        ).count()
-                        if existing_alerts == 0 and camera.lat and camera.lng:
-                            print(f"[TRAFFIC RETRO-DISPATCH] Repairing dispatch for detection {detection.id}")
-                            include_external = detection.allow_external_assignment
-                            nearby = crud.officer_location.find_nearby_officers_multi(
-                                db, primary_org_id=assigned_org.id,
-                                lat=camera.lat, lng=camera.lng, radius_km=5.0,
-                                include_external=include_external
+                # ═══ RETROACTIVE REPAIR (For Detections without Officers) ═══
+                if detection.assignment_type == "user":
+                    existing_assignments = db.query(models.DetectionAssignment).filter(
+                        models.DetectionAssignment.detection_id == detection.id
+                    ).count()
+                    if existing_assignments == 0 and camera.lat and camera.lng:
+                        print(f"[TRAFFIC RETRO-DISPATCH] Repairing dispatch for detection {detection.id}")
+                        include_external = detection.allow_external_assignment
+                        
+                        # Find the first traffic sub-org linked (we guess via detection.organization_id)
+                        # Actually we can just do broad external assignment if we know it should be 'user'
+                        # But wait, we need primary_org_id. Just use the detection's organization_id.
+                        primary_org_id = detection.organization_id
+                        if camera.linked_traffic_company_id:
+                            primary_org_id = camera.linked_traffic_company_id
+
+                        radius_val = crud.system_setting.get_value(db, "assignment_radius_traffic", 10.0)
+                        nearby = crud.officer_location.find_nearby_officers_multi(
+                            db, primary_org_id=primary_org_id,
+                            lat=camera.lat, lng=camera.lng, radius_km=radius_val,
+                            include_external=include_external
+                        )
+                        for officer, dist in nearby:
+                            print(f"[TRAFFIC RETRO-DISPATCH] → Officer {officer.user_id} at {dist:.2f}km")
+                            asg = crud.traffic_alert.create_assignment(
+                                db, detection_id=detection.id, user_id=officer.user_id, distance_km=dist
                             )
-                            for officer, dist in nearby:
-                                print(f"[TRAFFIC RETRO-DISPATCH] → Officer {officer.user_id} at {dist:.2f}km")
-                                alert = crud.traffic_alert.create_alert(
-                                    db, detection_id=detection.id, officer_id=officer.user_id,
-                                    camera_id=camera.id, org_id=officer.organization_id, distance_km=dist
-                                )
-                                asyncio.create_task(manager.send_to_user(
-                                    str(officer.user_id),
-                                    {
-                                        "type": "traffic_alert",
-                                        "alertId": alert.id,
-                                        "detectionId": detection.id,
-                                        "cameraId": camera.id,
-                                        "cameraName": camera.name,
-                                        "distanceKm": dist,
-                                        "plateNumber": detection.plate_number,
-                                        "description": detection.description,
-                                        "timestamp": datetime.utcnow().isoformat()
-                                    }
-                                ))
+                            asyncio.create_task(manager.send_to_user(
+                                str(officer.user_id),
+                                {
+                                    "type": "assignment_created",
+                                    "assignmentId": asg.id,
+                                    "detectionId": detection.id,
+                                    "cameraId": camera.id,
+                                    "cameraName": camera.name,
+                                    "distanceKm": dist,
+                                    "plateNumber": detection.plate_number,
+                                    "description": detection.description,
+                                    "timestamp": datetime.utcnow().isoformat()
+                                }
+                            ))
 
                 camera.is_flagged = True
                 

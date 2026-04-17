@@ -364,3 +364,20 @@ export async function getPerformanceMetrics(filters: AnalyticsFilter = {}) {
   const response = await mockGet<PerformanceResponse>(url);
   return response.data;
 }
+
+// ── System Settings ────────────────────────────────
+export interface SystemSetting {
+  key: string;
+  value: any;
+  description: string | null;
+}
+
+export async function getSystemSettings() {
+  const response = await mockGet<SystemSetting[]>(API_ENDPOINTS.admin.settings.list);
+  return response.data;
+}
+
+export async function updateSystemSetting(key: string, value: any, description?: string) {
+  const response = await mockPut<SystemSetting>(API_ENDPOINTS.admin.settings.update(key), { value, description });
+  return response.data;
+}

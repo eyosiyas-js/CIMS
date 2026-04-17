@@ -945,30 +945,34 @@ export default function DetectionPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-0.5 col-span-2">
                           <p className="text-xs font-medium text-muted-foreground">Assigned To</p>
-                          {(selectedDetection as any).assignedOfficers && (selectedDetection as any).assignedOfficers.length > 0 ? (
-                            <div className="space-y-2 mt-1">
-                              {(selectedDetection as any).assignedOfficers.map((officer: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between p-2 rounded-md bg-blue-50 border border-blue-200">
-                                  <div className="flex flex-col">
-                                    <span className="text-sm font-semibold text-blue-900">{officer.officerName}</span>
-                                    <span className="text-xs text-muted-foreground">{officer.officerEmail}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {officer.distanceKm != null && (
-                                      <Badge variant="outline" className="text-[10px] border-blue-400 text-blue-700 bg-blue-50">
-                                        📍 {officer.distanceKm} km
+                          {(selectedDetection as any).assignmentType === 'user' ? (
+                            (selectedDetection as any).assignedOfficers && (selectedDetection as any).assignedOfficers.length > 0 ? (
+                              <div className="space-y-2 mt-1">
+                                {(selectedDetection as any).assignedOfficers.map((officer: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between p-2 rounded-md bg-blue-50 border border-blue-200">
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-semibold text-blue-900">{officer.officerName}</span>
+                                      <span className="text-xs text-muted-foreground">{officer.officerEmail}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {officer.distanceKm != null && (
+                                        <Badge variant="outline" className="text-[10px] border-blue-400 text-blue-700 bg-blue-50">
+                                          📍 {officer.distanceKm} km
+                                        </Badge>
+                                      )}
+                                      <Badge
+                                        variant={officer.status === 'closed_resolved' ? 'default' : officer.status === 'assigned' ? 'secondary' : officer.status === 'closed_failed' ? 'destructive' : 'outline'}
+                                        className="text-[10px] capitalize"
+                                      >
+                                        {officer.status}
                                       </Badge>
-                                    )}
-                                    <Badge
-                                      variant={officer.status === 'resolved' ? 'default' : officer.status === 'accepted' ? 'secondary' : officer.status === 'failed' ? 'destructive' : 'outline'}
-                                      className="text-[10px] capitalize"
-                                    >
-                                      {officer.status}
-                                    </Badge>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm font-semibold text-yellow-600">Pending Officer Match (Geo-dispatching...)</p>
+                            )
                           ) : (
                             <p className="text-sm font-semibold text-blue-800">{selectedDetection.assignedCompanyName || "Local Response Team"}</p>
                           )}
