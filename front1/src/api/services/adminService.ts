@@ -125,8 +125,8 @@ export async function deleteFormTemplate(id: string) {
   return response.data;
 }
 
-export async function getActiveFormTemplate() {
-  const response = await mockGet<CaseFormTemplate>(`${API_ENDPOINTS.admin.forms.list}/active`);
+export async function getActiveFormTemplate(detectionType: string = "person") {
+  const response = await mockGet<CaseFormTemplate>(`${API_ENDPOINTS.admin.forms.list}/active?detection_type=${detectionType}`);
   return response.data;
 }
 
@@ -221,6 +221,18 @@ export interface RawSubmission {
   companyName: string;
   assignedCompanyName?: string;
   details?: Record<string, any>;
+  description?: string;
+  imageUrls?: string[];
+  subcategory?: string;
+  plateNumber?: string;
+  code?: string;
+  region?: string;
+  age?: string;
+  eligibleForAssignment?: boolean;
+  handlingNotes?: string;
+  handlingProofUrls?: string[];
+  resolvedDynamicData?: { label: string; value: any }[];
+  detectionEvents?: any[];
 }
 
 // ── Crime Type Analytics ────────────────────────

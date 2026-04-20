@@ -547,8 +547,11 @@ def get_roles(
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.PermissionChecker("settings.view")),
 ) -> Any:
-    org_id = None if current_user.role.name == "Super Admin" else current_user.organization_id
-    return crud.role.get_all(db, organization_id=org_id)
+    if current_user.role.name == "Super Admin":
+        return crud.role.get_all(db, organization_id=None, include_system=True)
+    else:
+        # Company admins only see their own custom roles (no system roles)
+        return crud.role.get_all(db, organization_id=current_user.organization_id, include_system=False)
 
 @router.get("/roles/permissions", response_model=List[str])
 def get_all_permissions(
@@ -609,6 +612,7 @@ def delete_role(
 # ── Form Templates ──────────────────────────────
 @router.get("/forms/active", response_model=Optional[schemas.FormTemplate])
 def get_active_form_template(
+    detection_type: str = "person",
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.PermissionChecker("reports.view")),
 ) -> Any:
@@ -618,7 +622,8 @@ def get_active_form_template(
         
     t = db.query(models.FormTemplate).filter(
         models.FormTemplate.is_active == True,
-        models.FormTemplate.organization_id == org_id
+        models.FormTemplate.organization_id == org_id,
+        models.FormTemplate.detection_type == detection_type
     ).first()
     if not t:
         return None
@@ -628,6 +633,7 @@ def get_active_form_template(
         "description": t.description,
         "fields": t.fields,
         "isActive": t.is_active,
+        "detectionType": t.detection_type,
         "createdAt": t.created_at.isoformat(),
         "updatedAt": t.updated_at.isoformat()
     }
@@ -650,6 +656,7 @@ def get_form_templates(
             "description": t.description,
             "fields": t.fields,
             "isActive": t.is_active,
+            "detectionType": t.detection_type,
             "createdAt": t.created_at.isoformat(),
             "updatedAt": t.updated_at.isoformat()
         }
@@ -667,10 +674,11 @@ def create_form_template(
     if not org_id and current_user.role.name != "Super Admin":
         raise HTTPException(status_code=400, detail="User must belong to an organization to create forms")
         
-    # If new template is active, deactivate others for this organization
+    # If new template is active, deactivate others of the same detection type for this organization
     if obj_in.isActive:
         db.query(models.FormTemplate).filter(
-            models.FormTemplate.organization_id == org_id
+            models.FormTemplate.organization_id == org_id,
+            models.FormTemplate.detection_type == (obj_in.detectionType or "person")
         ).update({"is_active": False})
         
     t = crud.form_template.create(db, obj_in=obj_in, organization_id=org_id)
@@ -680,6 +688,7 @@ def create_form_template(
         "description": t.description,
         "fields": t.fields,
         "isActive": t.is_active,
+        "detectionType": t.detection_type,
         "createdAt": t.created_at.isoformat(),
         "updatedAt": t.updated_at.isoformat()
     }
@@ -700,11 +709,13 @@ def update_form_template(
     if current_user.role.name != "Super Admin" and template.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Not enough permissions to edit this template")
     
-    # If activating this template, deactivate all others for this organization
+    # If activating this template, deactivate all others of the same detection type for this organization
     update_data = obj_in.dict(exclude_unset=True)
     if update_data.get("isActive"):
+        effective_type = update_data.get("detectionType", template.detection_type)
         db.query(models.FormTemplate).filter(
             models.FormTemplate.organization_id == template.organization_id,
+            models.FormTemplate.detection_type == effective_type,
             models.FormTemplate.id != id
         ).update({"is_active": False})
 
@@ -715,6 +726,7 @@ def update_form_template(
         "description": t.description,
         "fields": t.fields,
         "isActive": t.is_active,
+        "detectionType": t.detection_type,
         "createdAt": t.created_at.isoformat(),
         "updatedAt": t.updated_at.isoformat()
     }
@@ -963,6 +975,18 @@ def get_raw_submissions(
             assigned_org = db.query(models.Organization).filter(models.Organization.id == d.assigned_company_id).first()
             assigned_name = assigned_org.name if assigned_org else None
 
+        # Resolve dynamic data labels from form template
+        resolved_dynamic = []
+        if d.dynamic_data and d.form_template_id:
+            template = db.query(models.FormTemplate).filter(
+                models.FormTemplate.id == d.form_template_id
+            ).first()
+            if template and template.fields:
+                field_map = {f.get('id'): f.get('label') for f in template.fields if isinstance(f, dict)}
+                for field_id, value in d.dynamic_data.items():
+                    label = field_map.get(field_id, field_id)
+                    resolved_dynamic.append({"label": label, "value": value})
+
         results.append({
             "id": d.id,
             "type": "detection",
@@ -975,7 +999,19 @@ def get_raw_submissions(
             "timestamp": d.created_at,
             "companyName": d.organization.name if d.organization else "Unknown",
             "assignedCompanyName": assigned_name,
-            "details": {"subcategory": d.subcategory, "age": d.age}
+            "details": {"subcategory": d.subcategory, "age": d.age},
+            "description": d.description,
+            "imageUrls": d.image_urls or [],
+            "subcategory": d.subcategory,
+            "plateNumber": d.plate_number,
+            "code": d.code,
+            "region": d.region,
+            "age": d.age,
+            "eligibleForAssignment": d.eligible_for_assignment,
+            "handlingNotes": d.handling_notes,
+            "handlingProofUrls": d.handling_proof_urls or [],
+            "resolvedDynamicData": resolved_dynamic,
+            "detectionEvents": d.detection_events or [],
         })
 
     results.sort(key=lambda x: x["timestamp"], reverse=True)

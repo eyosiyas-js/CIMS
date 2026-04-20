@@ -33,17 +33,25 @@ class CRUDCompany:
         )
         db.add(db_obj)
         
-        # Create a Company Admin role for this organization
-        role_id = f"role-{uuid.uuid4()}"
-        admin_role = Role(
-            id=role_id,
-            name="Company Admin",
-            description=f"Administrator for {obj_in.name}",
-            permissions=["*"],
-            organization_id=org_id,
-            is_system=False
-        )
-        db.add(admin_role)
+        # Look up or create the shared system-level "Company Admin" role.
+        # This role is NOT tied to any specific organization, so the company's
+        # Roles & Permissions section starts empty for custom role creation.
+        admin_role = db.query(Role).filter(
+            Role.name == "Company Admin",
+            Role.is_system == True
+        ).first()
+        if not admin_role:
+            admin_role = Role(
+                id="role-company-admin",
+                name="Company Admin",
+                description="System company administrator",
+                permissions=["*"],
+                organization_id=None,
+                is_system=True
+            )
+            db.add(admin_role)
+            db.flush()
+        role_id = admin_role.id
         
         # Create the Admin User
         user_id = f"usr-{uuid.uuid4()}"

@@ -148,3 +148,16 @@ class RawSubmission(BaseModel):
     companyName: str
     assignedCompanyName: Optional[str] = None
     details: Optional[dict] = None # For dynamic_data or other specifics
+    # Extended fields for detail modal
+    description: Optional[str] = None
+    imageUrls: Optional[List[str]] = []
+    subcategory: Optional[str] = None
+    plateNumber: Optional[str] = None
+    code: Optional[str] = None
+    region: Optional[str] = None
+    age: Optional[str] = None
+    eligibleForAssignment: Optional[bool] = None
+    handlingNotes: Optional[str] = None
+    handlingProofUrls: Optional[List[str]] = []
+    resolvedDynamicData: Optional[List[dict]] = []
+    detectionEvents: Optional[List[dict]] = []

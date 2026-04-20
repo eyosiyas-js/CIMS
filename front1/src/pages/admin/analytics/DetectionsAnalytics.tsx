@@ -11,6 +11,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useState, useMemo } from "react";
 import { Download, Filter, Search, FileText, Building2, MapPin, Tag, ArrowRight, Eye, Clock, CheckCircle2, XCircle, TrendingUp, Calendar } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as UIDialogDescription } from "@/components/ui/dialog";
+import { RawSubmission } from "@/api/services/adminService";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { Switch } from "@/components/ui/switch";
@@ -58,6 +60,8 @@ function StatCard({ title, value, icon: Icon, trend, color, subtitle }: any) {
 
 export function DetectionsAnalytics() {
     const [searchParams] = useSearchParams();
+    const [selectedRow, setSelectedRow] = useState<RawSubmission | null>(null);
+    const [expandedImage, setExpandedImage] = useState<string | null>(null);
     const [filters, setFilters] = useState({ 
         companyId: searchParams.get("companyId") || "all", 
         includeChildren: true,
@@ -469,10 +473,13 @@ export function DetectionsAnalytics() {
                                                     {format(new Date(row.timestamp), "MMM d, HH:mm")}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary" asChild>
-                                                        <Link to={`/detection?id=${row.id}`}>
-                                                            <ArrowRight className="h-4 w-4" />
-                                                        </Link>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary" 
+                                                        onClick={() => setSelectedRow(row)}
+                                                    >
+                                                        <Eye className="h-4 w-4" />
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>
@@ -491,6 +498,188 @@ export function DetectionsAnalytics() {
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            {/* ── Detection Detail Modal ── */}
+            <Dialog open={!!selectedRow} onOpenChange={(open) => !open && setSelectedRow(null)}>
+                <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            {selectedRow?.title}
+                            <Badge variant="outline" className="capitalize text-xs">
+                                {selectedRow?.category}
+                            </Badge>
+                        </DialogTitle>
+                        <UIDialogDescription>
+                            Detection ID: {selectedRow?.id} • {selectedRow?.timestamp && format(new Date(selectedRow.timestamp), "MMM d, yyyy HH:mm:ss")}
+                        </UIDialogDescription>
+                    </DialogHeader>
+
+                    {selectedRow && (
+                        <div className="space-y-6 mt-4">
+                            {/* Images */}
+                            {selectedRow.imageUrls && selectedRow.imageUrls.length > 0 && (
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {selectedRow.imageUrls.map((url, i) => (
+                                        <div key={i} className="rounded-md overflow-hidden bg-muted aspect-video border border-border/50">
+                                            <img src={`http://localhost:8000${url}`} alt="Detection" className="w-full h-full object-cover" />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Core Info */}
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold text-sm border-b pb-1">Core details</h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Description:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.description || "—"}</span></div>
+                                        <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Location:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.location || "—"}</span></div>
+                                        <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Status:</span><span className="col-span-2 text-foreground font-medium capitalize">{selectedRow.status || "—"}</span></div>
+                                        <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Company:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.companyName || "—"}</span></div>
+                                    </div>
+                                </div>
+
+                                {/* Extended Info */}
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold text-sm border-b pb-1">Categorical details</h4>
+                                    <div className="space-y-2 text-sm">
+                                        {selectedRow.subcategory && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Subcategory:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.subcategory}</span></div>}
+                                        {selectedRow.crimeType && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Crime Type:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.crimeType}</span></div>}
+                                        {selectedRow.age && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Est. Age:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.age}</span></div>}
+                                        
+                                        {/* Vehicle specific */}
+                                        {selectedRow.category === "vehicle" && (
+                                            <>
+                                                {selectedRow.plateNumber && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Plate Number:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.plateNumber}</span></div>}
+                                                {selectedRow.code && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Code:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.code}</span></div>}
+                                                {selectedRow.region && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Region:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.region}</span></div>}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Handling Info */}
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold text-sm border-b pb-1">Handling Details</h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Assigned To:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.assignedCompanyName || "Unassigned"}</span></div>
+                                        <div className="grid grid-cols-3 text-muted-foreground">
+                                            <span className="col-span-1">Action Status:</span>
+                                            <span className="col-span-2 font-medium capitalize" style={{ color: HANDLING_STATUS_COLORS[selectedRow.handlingStatus || "unassigned"] }}>
+                                                {(selectedRow.handlingStatus || "unassigned").replace("_", " ")}
+                                            </span>
+                                        </div>
+                                        {selectedRow.handlingNotes && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Notes:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.handlingNotes}</span></div>}
+                                    </div>
+                                </div>
+
+                                {/* Dynamic Form Data */}
+                                {selectedRow.resolvedDynamicData && selectedRow.resolvedDynamicData.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold text-sm border-b pb-1 flex items-center gap-2">
+                                            <FileText className="w-4 h-4 text-primary" /> Dynamic Form Fields
+                                        </h4>
+                                        <div className="space-y-2 text-sm">
+                                            {selectedRow.resolvedDynamicData.map((field, i) => (
+                                                <div key={i} className="grid grid-cols-3 text-muted-foreground">
+                                                    <span className="col-span-1">{field.label}:</span>
+                                                    <span className="col-span-2 text-foreground font-medium">{String(field.value) || "—"}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {selectedRow.handlingProofUrls && selectedRow.handlingProofUrls.length > 0 && (
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold text-sm border-b pb-1">Resolution Proof Images</h4>
+                                    <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                                        {selectedRow.handlingProofUrls.map((url, i) => (
+                                            <div key={i} className="rounded-md overflow-hidden bg-muted aspect-square border border-border/50 cursor-pointer" onClick={() => setExpandedImage(`http://localhost:8000${url}`)}>
+                                                <img src={`http://localhost:8000${url}`} alt="Proof" className="w-full h-full object-cover transition-transform hover:scale-105" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedRow.detectionEvents && selectedRow.detectionEvents.length > 0 && (
+                                <div className="space-y-4 pt-2">
+                                    <h4 className="font-semibold text-sm border-b pb-1 flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-primary" /> Detection History
+                                    </h4>
+                                    <div className="space-y-4 relative before:absolute before:left-[17px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
+                                        {selectedRow.detectionEvents.map((event: any, idx: number) => (
+                                            <div key={event.id || idx} className="relative pl-10">
+                                                <div className="absolute left-0 top-1 w-[35px] h-[35px] rounded-full border-4 border-background bg-primary/20 flex items-center justify-center z-10">
+                                                    <Eye className="w-4 h-4 text-primary" />
+                                                </div>
+                                                <div className="bg-muted/30 rounded-lg p-4 border space-y-3">
+                                                    <div className="flex justify-between items-start gap-4">
+                                                        <div>
+                                                            <p className="font-semibold text-sm">{event.cameraName || "Unknown Camera"}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {event.timestamp ? new Date(event.timestamp).toLocaleString() : "Unknown time"}
+                                                            </p>
+                                                        </div>
+                                                        <Badge variant="outline" className="text-[10px] uppercase">Detected</Badge>
+                                                    </div>
+                                                    {(event.snapshotUrls && event.snapshotUrls.length > 0) ? (
+                                                        <div className="flex gap-2 overflow-x-auto pb-1">
+                                                            {event.snapshotUrls.map((url: string, imgIdx: number) => (
+                                                                <div 
+                                                                    key={imgIdx}
+                                                                    className="rounded-md overflow-hidden border bg-black/5 w-24 h-24 flex-shrink-0 flex items-center justify-center cursor-pointer"
+                                                                    onClick={() => setExpandedImage(`http://localhost:8000${url}`)}
+                                                                >
+                                                                    <img 
+                                                                        src={`http://localhost:8000${url}`} 
+                                                                        alt={`Detection ${imgIdx + 1}`}
+                                                                        className="w-full h-full object-cover transition-transform hover:scale-105"
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : event.snapshotUrl ? (
+                                                        <div 
+                                                            className="rounded-md overflow-hidden border bg-black/5 w-32 h-32 flex items-center justify-center cursor-pointer"
+                                                            onClick={() => setExpandedImage(`http://localhost:8000${event.snapshotUrl}`)}
+                                                        >
+                                                            <img 
+                                                                src={`http://localhost:8000${event.snapshotUrl}`} 
+                                                                alt={`Detection at ${event.cameraName}`}
+                                                                className="w-full h-full object-cover transition-transform hover:scale-105"
+                                                            />
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Expanded Image Modal ── */}
+            <Dialog open={!!expandedImage} onOpenChange={(open) => !open && setExpandedImage(null)}>
+                <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 overflow-hidden bg-black border-none flex items-center justify-center">
+                    {expandedImage && (
+                        <div className="relative w-full h-full flex items-center justify-center bg-black/90 p-4">
+                            <img 
+                                src={expandedImage} 
+                                alt="Expanded view" 
+                                className="max-w-full max-h-[85vh] object-contain rounded-md"
+                            />
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
         </AdminLayout>
     );
 }

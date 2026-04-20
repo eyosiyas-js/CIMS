@@ -130,8 +130,8 @@ export function useDeleteFormTemplate() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "forms"] }),
   });
 }
-export function useActiveFormTemplate() {
-  return useQuery({ queryKey: ["admin", "forms", "active"], queryFn: getActiveFormTemplate });
+export function useActiveFormTemplate(detectionType: string = "person") {
+  return useQuery({ queryKey: ["admin", "forms", "active", detectionType], queryFn: () => getActiveFormTemplate(detectionType) });
 }
 
 // ── Devices ─────────────────────────────────────

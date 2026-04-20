@@ -114,7 +114,7 @@ export default function DetectionPage() {
   const createDetection = useCreateDetection();
   const updateDetection = useUpdateDetection();
   const deleteDetection = useDeleteDetection();
-  const { data: activeTemplate } = useActiveFormTemplate();
+  const { data: activeTemplate } = useActiveFormTemplate(selectedCategory);
 
   useEffect(() => {
     if (selectedDetection) {

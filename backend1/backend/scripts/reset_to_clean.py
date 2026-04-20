@@ -37,6 +37,13 @@ def reset_to_clean():
                 permissions=["*"],
                 is_system=True
             ),
+            "company_admin": Role(
+                id="role-company-admin",
+                name="Company Admin",
+                description="System company administrator",
+                permissions=["*"],
+                is_system=True
+            ),
             "admin": Role(
                 id="role-admin",
                 name="Admin",

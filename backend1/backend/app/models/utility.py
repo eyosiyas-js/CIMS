@@ -19,6 +19,7 @@ class FormTemplate(Base, TimestampMixin):
     description = Column(String)
     fields = Column(JSON) # List of FormField objects
     is_active = Column(Boolean, default=True)
+    detection_type = Column(String, default="person") # "person" or "vehicle"
     organization_id = Column(String, ForeignKey("organization.id"))
     
     organization = relationship("Organization", back_populates="templates")

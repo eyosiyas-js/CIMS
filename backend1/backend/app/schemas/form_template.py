@@ -15,10 +15,12 @@ class FormTemplateBase(BaseModel):
     description: Optional[str] = None
     fields: Optional[List[FormFieldSchema]] = []
     isActive: Optional[bool] = True
+    detectionType: Optional[str] = "person"  # "person" or "vehicle"
 
 class FormTemplateCreate(FormTemplateBase):
     name: str
     fields: List[FormFieldSchema]
+    detectionType: str = "person"
 
 class FormTemplateUpdate(FormTemplateBase):
     pass

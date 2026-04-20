@@ -26,6 +26,7 @@ class CRUDFormTemplate:
             description=obj_in.description,
             fields=fields_data,
             is_active=obj_in.isActive,
+            detection_type=obj_in.detectionType or "person",
             organization_id=organization_id
         )
         db.add(db_obj)
@@ -37,6 +38,8 @@ class CRUDFormTemplate:
         update_data = obj_in.dict(exclude_unset=True)
         if "isActive" in update_data:
             update_data["is_active"] = update_data.pop("isActive")
+        if "detectionType" in update_data:
+            update_data["detection_type"] = update_data.pop("detectionType")
         for field in update_data:
             setattr(db_obj, field, update_data[field])
         db.add(db_obj)

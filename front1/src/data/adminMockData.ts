@@ -42,6 +42,7 @@ export interface CaseFormTemplate {
   description: string;
   fields: FormField[];
   isActive: boolean;
+  detectionType: "person" | "vehicle";
   createdAt: string;
   updatedAt: string;
 }
