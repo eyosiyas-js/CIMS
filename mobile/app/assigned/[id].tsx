@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Activi
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { detectionService, resolveUrl, Assignment } from '../../api/detectionService';
+import { useAuth } from '../../context/AuthContext';
 import { ChevronLeft, Calendar, User, FileText, CheckCircle2, AlertTriangle, Info, MapPin, AlertCircle, X, Maximize2, Shield, Clock, Camera, Navigation } from 'lucide-react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -13,14 +14,20 @@ const { width } = Dimensions.get('window');
 const statusConfig: any = {
   unassigned: { bg: '#8E8E9320', text: '#8E8E93', label: 'Unassigned' },
   assigned: { bg: '#FF3B3015', text: '#FF3B30', label: 'Pending Action' },
+  pending: { bg: '#FF3B3015', text: '#FF3B30', label: 'Pending Action' },
+  in_progress: { bg: '#FF950015', text: '#FF9500', label: 'In Progress' },
   closed_resolved: { bg: '#34C75915', text: '#34C759', label: 'Incident Resolved' },
   closed_failed: { bg: '#FF3B3015', text: '#FF3B30', label: 'Incident Failed' },
+  resolved: { bg: '#34C75915', text: '#34C759', label: 'Incident Resolved' },
+  failed: { bg: '#FF3B3015', text: '#FF3B30', label: 'Incident Failed' },
 };
 
 export default function DetectionDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isTraffic = user?.companyType === 'Traffic';
 
   const [notes, setNotes] = useState('');
   const [selectedProofImages, setSelectedProofImages] = useState<any[]>([]); // Future: add expo-image-picker
@@ -41,14 +48,16 @@ export default function DetectionDetailsScreen() {
   }, []);
 
   const { data: assignment, isLoading, refetch } = useQuery({
-    queryKey: ['assignment', id],
-    queryFn: () => detectionService.getAssignmentDetail(id as string),
+    queryKey: ['assignment', id, isTraffic],
+    queryFn: () => isTraffic ? detectionService.getAssignmentDetail(id as string) : detectionService.getDetectionDetail(id as string),
     enabled: !!id,
   });
 
   const actionMutation = useMutation({
-    mutationFn: (payload: { status: "closed_resolved" | "closed_failed", notes?: string, proofFiles?: any[] }) =>
-      detectionService.handleAssignmentAction(id as string, payload),
+    mutationFn: (payload: { status: any, notes?: string, proofFiles?: any[] }) =>
+      isTraffic 
+        ? detectionService.handleAssignmentAction(id as string, payload)
+        : detectionService.handleDetectionAction(id as string, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignment', id] });
       queryClient.invalidateQueries({ queryKey: ['assigned-detections'] });
@@ -62,8 +71,9 @@ export default function DetectionDetailsScreen() {
     }
   });
 
-  const handleStatusChange = (newStatus: "closed_resolved" | "closed_failed") => {
-    if (selectedProofImages.length === 0) {
+  const handleStatusChange = (newStatus: any) => {
+    const requiresProof = ['closed_resolved', 'closed_failed', 'resolved', 'failed'].includes(newStatus);
+    if (requiresProof && selectedProofImages.length === 0) {
       Alert.alert('Evidence Required', 'You must upload at least one piece of image evidence before closing this incident.');
       return;
     }
@@ -87,8 +97,9 @@ export default function DetectionDetailsScreen() {
   };
 
   const openInMaps = () => {
-    const lat = assignment?.cameraInfo?.lat;
-    const lng = assignment?.cameraInfo?.lng;
+    const cameraInfo = isTraffic ? assignment?.cameraInfo : assignment?.detectionEvents?.[0];
+    const lat = cameraInfo?.lat;
+    const lng = cameraInfo?.lng;
     if (lat && lng) {
       const url = `https://www.google.com/maps?q=${lat},${lng}`;
       Linking.openURL(url);
@@ -98,16 +109,17 @@ export default function DetectionDetailsScreen() {
   };
 
   useEffect(() => {
-    if (mapRef.current && assignment?.cameraInfo?.lat && userLocation) {
+    const cameraInfo = isTraffic ? assignment?.cameraInfo : assignment?.detectionEvents?.[0];
+    if (mapRef.current && cameraInfo?.lat && userLocation) {
       mapRef.current.fitToCoordinates(
         [
-          { latitude: assignment.cameraInfo.lat, longitude: assignment.cameraInfo.lng },
+          { latitude: cameraInfo.lat, longitude: cameraInfo.lng },
           userLocation
         ],
         { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true }
       );
     }
-  }, [userLocation, assignment]);
+  }, [userLocation, assignment, isTraffic]);
 
   if (isLoading) {
     return (
@@ -120,21 +132,50 @@ export default function DetectionDetailsScreen() {
 
   if (!assignment) return null;
 
-  const currentStatus = statusConfig[assignment.status || 'assigned'] || statusConfig.unassigned;
-  const isFinalized = assignment.status === 'closed_resolved' || assignment.status === 'closed_failed';
+  const detectionInfo = isTraffic ? assignment.detectionInfo : assignment;
+  const cameraInfo = isTraffic ? assignment.cameraInfo : assignment.detectionEvents?.[0];
+  const cameraName = isTraffic ? assignment.cameraName : assignment.detectionEvents?.[0]?.cameraName || 'Unknown Camera';
+  const statusStr = isTraffic ? (assignment.status || 'assigned') : (assignment.handlingStatus || 'unassigned');
+  
+  const currentStatus = statusConfig[statusStr] || statusConfig.unassigned;
+  const isFinalized = isTraffic 
+    ? (assignment.status === 'closed_resolved' || assignment.status === 'closed_failed')
+    : (assignment.handlingStatus === 'resolved' || assignment.handlingStatus === 'failed');
 
-  // Gather all images (reference images + snapshots + proof photos)
-  const allImages = [
-    ...(assignment.detectionInfo?.imageUrls || []),
-    ...(assignment.proofUrls || [])
-  ].filter(Boolean);
+  const allImages = isTraffic 
+    ? [...(assignment.detectionInfo?.imageUrls || []), ...(assignment.proofUrls || [])].filter(Boolean)
+    : [...(assignment.imageUrls || []), ...(assignment.handlingProofUrls || []), assignment.detectionEvents?.[0]?.snapshotUrl].filter(Boolean);
 
   const region = {
-      latitude: assignment.cameraInfo?.lat || -1.286389,
-      longitude: assignment.cameraInfo?.lng || 36.817223,
+      latitude: cameraInfo?.lat || -1.286389,
+      longitude: cameraInfo?.lng || 36.817223,
       latitudeDelta: 0.005,
       longitudeDelta: 0.005,
   };
+
+  // Build Dynamic Attributes Array
+  const attributes = [];
+  if (detectionInfo?.subcategory) attributes.push({ label: 'Type', value: detectionInfo.subcategory.replace('_', ' ') });
+  else attributes.push({ label: 'Type', value: 'Standard' });
+  
+  if (detectionInfo?.category === 'vehicle') {
+     if (detectionInfo?.plateNumber) attributes.push({ label: 'Plate Number', value: detectionInfo.plateNumber });
+     if (detectionInfo?.region) attributes.push({ label: 'Region', value: detectionInfo.region });
+     if (detectionInfo?.code) attributes.push({ label: 'Code', value: detectionInfo.code });
+  } else if (detectionInfo?.category === 'person') {
+     if (detectionInfo?.age) attributes.push({ label: 'Age Group', value: detectionInfo.age });
+     if (detectionInfo?.crimeType) attributes.push({ label: 'Crime Category', value: detectionInfo.crimeType, isAlert: true });
+  }
+
+  if (detectionInfo?.description) {
+     attributes.push({ label: 'Description/Incident Type', value: detectionInfo.description, fullWidth: true, isAlert: true });
+  }
+
+  if (detectionInfo?.resolvedDynamicData && Array.isArray(detectionInfo.resolvedDynamicData)) {
+     detectionInfo.resolvedDynamicData.forEach((item: any) => {
+        attributes.push({ label: item.label, value: item.value, fullWidth: true });
+     });
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -153,14 +194,14 @@ export default function DetectionDetailsScreen() {
               {currentStatus.label}
             </Text>
           </View>
-          <Text style={styles.idText}>ID: #{assignment.detectionId.split('-')[0].toUpperCase()}</Text>
+          <Text style={styles.idText}>ID: #{isTraffic ? assignment.detectionId?.split('-')[0].toUpperCase() : assignment.id?.split('-')[0].toUpperCase()}</Text>
         </View>
 
         <View style={styles.titleSection}>
-          <Text style={styles.categoryLabel}>{assignment.detectionInfo?.category}</Text>
-          <Text style={styles.title}>{assignment.detectionInfo?.name}</Text>
-          {assignment.detectionInfo?.description && (
-            <Text style={styles.description}>"{assignment.detectionInfo.description}"</Text>
+          <Text style={styles.categoryLabel}>{detectionInfo?.category}</Text>
+          <Text style={styles.title}>{detectionInfo?.name}</Text>
+          {detectionInfo?.description && (
+            <Text style={styles.description}>"{detectionInfo.description}"</Text>
           )}
         </View>
 
@@ -173,7 +214,7 @@ export default function DetectionDetailsScreen() {
           <View style={styles.metaRow}>
             <Camera size={16} color="#8E8E93" />
             <Text style={styles.metaLabel}>Camera</Text>
-            <Text style={styles.metaValue}>{assignment.cameraName || 'Unknown Source'}</Text>
+            <Text style={styles.metaValue}>{cameraName}</Text>
           </View>
           <View style={styles.metaRow}>
             <Navigation size={16} color="#8E8E93" />
@@ -184,32 +225,22 @@ export default function DetectionDetailsScreen() {
           </View>
         </View>
 
-        {/* Detailed Attributes Parity */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Identification Metadata</Text>
           <View style={styles.attributeGrid}>
-             <View style={styles.attributeBox}>
-                <Text style={styles.attrLabel}>Sub-Category</Text>
-                <Text style={styles.attrValue}>{assignment.detectionInfo?.category || "Standard"}</Text>
-             </View>
-             <View style={styles.attributeBox}>
-                <Text style={styles.attrLabel}>Plate Number</Text>
-                <Text style={styles.attrValue}>{assignment.detectionInfo?.plateNumber || "Unknown"}</Text>
-             </View>
-             <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '50%' }]}>
-                <Text style={styles.attrLabel}>Region</Text>
-                <Text style={styles.attrValue}>{assignment.detectionInfo?.region || "N/A"}</Text>
-             </View>
-             <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '50%' }]}>
-                <Text style={styles.attrLabel}>Code</Text>
-                <Text style={styles.attrValue}>{assignment.detectionInfo?.code || "N/A"}</Text>
-             </View>
-             {assignment.detectionInfo?.description && (
-                <View style={[styles.attributeBox, { borderTopWidth: 1, borderTopColor: '#F2F2F7', width: '100%' }]}>
-                    <Text style={styles.attrLabel}>Incident Type</Text>
-                    <Text style={[styles.attrValue, { color: '#FF3B30' }]}>{assignment.detectionInfo.description}</Text>
+             {attributes.map((attr, idx) => (
+                <View 
+                  key={idx} 
+                  style={[
+                    styles.attributeBox, 
+                    { width: attr.fullWidth ? '100%' : '50%' },
+                    idx > 1 ? { borderTopWidth: 1, borderTopColor: '#F2F2F7' } : {}
+                  ]}
+                >
+                    <Text style={styles.attrLabel}>{attr.label}</Text>
+                    <Text style={[styles.attrValue, attr.isAlert ? { color: '#FF3B30' } : {}]}>{attr.value}</Text>
                 </View>
-             )}
+             ))}
           </View>
         </View>
 
@@ -253,48 +284,71 @@ export default function DetectionDetailsScreen() {
                 <Text style={styles.panelTitle}>Operations Control</Text>
              </View>
             
-             <View style={styles.resolutionLogic}>
-                 <Text style={styles.label}>Notes (Optional)</Text>
-                 <TextInput 
-                     style={styles.notesInput}
-                     multiline
-                     placeholder="Detail your operational activity and findings..."
-                     value={notes}
-                     onChangeText={setNotes}
-                 />
-                 
-                 <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
-                     <Camera size={18} color="#8E8E93" />
-                     <Text style={styles.uploadText}>Attach Proof Photos ({selectedProofImages.length} selected)</Text>
-                 </TouchableOpacity>
+             {(!isTraffic && statusStr === 'pending') ? (
+               <View style={styles.pendingAction}>
+                   <Text style={styles.pendingText}>This incident requires operational response.</Text>
+                   
+                   <Text style={[styles.label, { marginTop: 8 }]}>Notes (Optional)</Text>
+                   <TextInput 
+                       style={[styles.notesInput, { minHeight: 80 }]}
+                       multiline
+                       placeholder="Detail your response intent..."
+                       value={notes}
+                       onChangeText={setNotes}
+                   />
 
-                 <View style={styles.dualControls}>
-                     <TouchableOpacity 
-                         style={[styles.smallCtrl, styles.resolveCtrl]}
-                         onPress={() => handleStatusChange('closed_resolved')}
-                         disabled={actionMutation.isPending}
-                     >
-                         {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
-                             <>
-                                 <CheckCircle2 size={18} color="#fff" />
-                                 <Text style={styles.ctrlText}>Resolve</Text>
-                             </>
-                         )}
-                     </TouchableOpacity>
-                     <TouchableOpacity 
-                         style={[styles.smallCtrl, styles.failCtrl]}
-                         onPress={() => handleStatusChange('closed_failed')}
-                         disabled={actionMutation.isPending}
-                     >
-                         {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
-                             <>
-                                 <AlertCircle size={18} color="#fff" />
-                                 <Text style={styles.ctrlText}>Fail</Text>
-                             </>
-                         )}
-                     </TouchableOpacity>
-                 </View>
-             </View>
+                   <TouchableOpacity 
+                       style={styles.startBtn}
+                       onPress={() => handleStatusChange('in_progress')}
+                       disabled={actionMutation.isPending}
+                   >
+                       {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.startBtnText}>Start Response</Text>}
+                   </TouchableOpacity>
+               </View>
+             ) : (
+                <View style={styles.resolutionLogic}>
+                    <Text style={styles.label}>Notes (Optional)</Text>
+                    <TextInput 
+                        style={styles.notesInput}
+                        multiline
+                        placeholder="Detail your operational activity and findings..."
+                        value={notes}
+                        onChangeText={setNotes}
+                    />
+                    
+                    <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
+                        <Camera size={18} color="#8E8E93" />
+                        <Text style={styles.uploadText}>Attach Proof Photos ({selectedProofImages.length} selected)</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.dualControls}>
+                        <TouchableOpacity 
+                            style={[styles.smallCtrl, styles.resolveCtrl]}
+                            onPress={() => handleStatusChange(isTraffic ? 'closed_resolved' : 'resolved')}
+                            disabled={actionMutation.isPending}
+                        >
+                            {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
+                                <>
+                                    <CheckCircle2 size={18} color="#fff" />
+                                    <Text style={styles.ctrlText}>Resolve</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[styles.smallCtrl, styles.failCtrl]}
+                            onPress={() => handleStatusChange(isTraffic ? 'closed_failed' : 'failed')}
+                            disabled={actionMutation.isPending}
+                        >
+                            {actionMutation.isPending ? <ActivityIndicator color="#fff" /> : (
+                                <>
+                                    <AlertCircle size={18} color="#fff" />
+                                    <Text style={styles.ctrlText}>Fail</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+             )}
           </View>
         )}
 
@@ -306,10 +360,10 @@ export default function DetectionDetailsScreen() {
                     <Text style={styles.bannerTitle}>Incident Finalized</Text>
                 </View>
                 <Text style={styles.bannerSubtitle}>This request has been completed and archived for history.</Text>
-                {assignment.notes && (
+                {(assignment.notes || assignment.handlingNotes) && (
                     <View style={styles.finalNotes}>
                         <Text style={styles.finalNotesLabel}>Official Findings:</Text>
-                        <Text style={styles.finalNotesText}>{assignment.notes}</Text>
+                        <Text style={styles.finalNotesText}>{assignment.notes || assignment.handlingNotes}</Text>
                     </View>
                 )}
             </View>

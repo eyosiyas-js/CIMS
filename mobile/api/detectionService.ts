@@ -75,7 +75,7 @@ export interface Assignment {
 }
 
 export interface DetectionActionPayload {
-  status: "closed_resolved" | "closed_failed";
+  status: "closed_resolved" | "closed_failed" | "in_progress" | "resolved" | "failed";
   notes?: string;
   proofFiles?: any[];
 }
@@ -88,6 +88,11 @@ export const detectionService = {
 
   getAssignmentDetail: async (id: string): Promise<Assignment> => {
     const response = await apiClient.get(`/officers/assignments/${id}`);
+    return response.data;
+  },
+
+  getDetectionDetail: async (id: string): Promise<Detection> => {
+    const response = await apiClient.get(`/detections/${id}`);
     return response.data;
   },
 
@@ -107,6 +112,29 @@ export const detectionService = {
     }
 
     const response = await apiClient.post(`/officers/assignments/${id}/close`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  handleDetectionAction: async (id: string, payload: DetectionActionPayload): Promise<any> => {
+    const formData = new FormData();
+    formData.append('status', payload.status);
+    if (payload.notes) formData.append('notes', payload.notes);
+    
+    if (payload.proofFiles && payload.proofFiles.length > 0) {
+      payload.proofFiles.forEach((file, index) => {
+        formData.append('proofFiles', {
+          uri: file.uri,
+          type: file.type || 'image/jpeg',
+          name: file.name || `proof_${index}.jpg`,
+        } as any);
+      });
+    }
+
+    const response = await apiClient.post(`/detections/${id}/action`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
