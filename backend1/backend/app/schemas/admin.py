@@ -59,8 +59,7 @@ class HandlingStatusStat(BaseModel):
 class DetailedAnalytics(BaseModel):
     totalDetections: int
     resolutionRate: float          # % of detections resolved
-    acceptRate: float              # % of detections accepted (in_progress+resolved+failed)
-    avgHandlingTimeHours: Optional[float] = None  # avg hours from assignment to resolution
+    avgResolutionTimeHours: Optional[float] = None  # avg hours from creation to resolution/closure
     recordsByCategory: List[CategoryStat]
     recordsByLocation: List[LocationStat]
     handlingStatusBreakdown: List[HandlingStatusStat]

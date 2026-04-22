@@ -56,6 +56,23 @@ const statusColors = {
   failed: "bg-destructive/20 text-destructive",
 };
 
+/** Maps internal subcategory code to a human-friendly label based on detection category. */
+function getSubcategoryLabel(category: string, subcategory: string): string {
+  if (category === "vehicle") {
+    switch (subcategory) {
+      case "missing_person": return "Missing Car";
+      case "criminal": return "Crime Vehicle";
+      default: return subcategory.replace("_", " ");
+    }
+  }
+  // person or default
+  switch (subcategory) {
+    case "missing_person": return "Missing Person";
+    case "criminal": return "Criminal";
+    default: return subcategory.replace("_", " ");
+  }
+}
+
 export default function DetectionPage() {
   const [selectedCategory, setSelectedCategory] = useState<"person" | "vehicle">("person");
   const [formData, setFormData] = useState({
@@ -902,7 +919,7 @@ export default function DetectionPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-muted-foreground">Subcategory</p>
                         <Badge variant="secondary" className="capitalize">
-                          {selectedDetection.subcategory.replace("_", " ")}
+                          {getSubcategoryLabel(selectedDetection.category, selectedDetection.subcategory)}
                         </Badge>
                       </div>
                     )}
@@ -1191,7 +1208,7 @@ function DetectionCard({ detection, onClick }: { detection: DetectionRequest, on
             <span className="font-medium">{detection.name}</span>
             <Badge variant="outline" className={statusColors[detection.status]}>{detection.status}</Badge>
             {detection.subcategory && (
-              <Badge variant="secondary" className="capitalize">{detection.subcategory.replace("_", " ")}</Badge>
+              <Badge variant="secondary" className="capitalize">{getSubcategoryLabel(detection.category, detection.subcategory)}</Badge>
             )}
             {detection.crimeType && (
               <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 text-[10px] px-1.5">

@@ -833,7 +833,10 @@ def get_detailed_analytics(
     if category and category != "all":
         det_query = det_query.filter(models.Detection.category == category)
     if status and status != "all":
-        det_query = det_query.filter(models.Detection.handling_status == status)
+        if status == "pending_verification":
+            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", "pending", None]))
+        else:
+            det_query = det_query.filter(models.Detection.handling_status == status)
     if start_date:
         try:
             sd = datetime.datetime.fromisoformat(start_date)
@@ -855,21 +858,22 @@ def get_detailed_analytics(
     resolved_count = det_query.filter(models.Detection.handling_status == "resolved").count()
     resolution_rate = round((resolved_count / assigned_count * 100) if assigned_count > 0 else 0, 1)
 
-    # Accept rate: (in_progress + resolved + failed) / total
-    accepted_statuses = ["in_progress", "resolved", "failed"]
-    accepted_count = det_query.filter(models.Detection.handling_status.in_(accepted_statuses)).count()
-    accept_rate = round((accepted_count / total_detections * 100) if total_detections > 0 else 0, 1)
-
-    # Avg handling time: for resolved detections, diff between updated_at and created_at
-    resolved_dets = det_query.filter(models.Detection.handling_status == "resolved").all()
-    if resolved_dets:
-        total_hours = sum(
-            (d.updated_at - d.created_at).total_seconds() / 3600
-            for d in resolved_dets if d.updated_at and d.created_at
-        )
-        avg_handling_time = round(total_hours / len(resolved_dets), 1)
+    # Avg Resolution Time: for resolved AND failed detections, diff between updated_at and created_at
+    closed_dets = det_query.filter(
+        models.Detection.handling_status.in_(["resolved", "failed"])
+    ).all()
+    if closed_dets:
+        valid_dets = [d for d in closed_dets if d.updated_at and d.created_at]
+        if valid_dets:
+            total_hours = sum(
+                (d.updated_at - d.created_at).total_seconds() / 3600
+                for d in valid_dets
+            )
+            avg_resolution_time = round(total_hours / len(valid_dets), 1)
+        else:
+            avg_resolution_time = None
     else:
-        avg_handling_time = None
+        avg_resolution_time = None
 
     # Records by Category
     cat_base = db.query(
@@ -884,20 +888,29 @@ def get_detailed_analytics(
         for c in cat_base.all()
     ]
 
-    # Records by Location
-    loc_base = db.query(
-        models.Detection.location, 
-        func.count(models.Detection.id).label("count")
-    ).group_by(models.Detection.location)
-    if org_ids:
-        loc_base = loc_base.filter(models.Detection.organization_id.in_(org_ids))
-    
+    # Records by Location — use the camera's location field (not the detection form's "Last Known Location")
+    # detected_camera_ids is a plain JSON column, so we resolve camera locations in Python
+    all_dets_for_loc = det_query.all()
+    loc_counts: dict = {}
+    _camera_loc_cache: dict = {}
+    for d in all_dets_for_loc:
+        cam_ids = d.detected_camera_ids or []
+        if cam_ids:
+            first_cam_id = cam_ids[0]
+            if first_cam_id not in _camera_loc_cache:
+                cam = db.query(models.Camera).filter(models.Camera.id == first_cam_id).first()
+                _camera_loc_cache[first_cam_id] = (cam.location if cam and cam.location else None)
+            loc_name = _camera_loc_cache[first_cam_id] or d.location or "Unknown"
+        else:
+            loc_name = d.location or "Unknown"
+        loc_counts[loc_name] = loc_counts.get(loc_name, 0) + 1
     records_by_location = [
-        {"location": l.location or "Unknown", "count": l.count}
-        for l in loc_base.all()
+        {"location": loc, "count": cnt}
+        for loc, cnt in sorted(loc_counts.items(), key=lambda x: -x[1])
     ]
 
-    # Handling Status Breakdown
+
+    # Handling Status Breakdown — grouped into 4 standard categories
     hs_base = db.query(
         models.Detection.handling_status,
         func.count(models.Detection.id).label("count")
@@ -905,9 +918,30 @@ def get_detailed_analytics(
     if org_ids:
         hs_base = hs_base.filter(models.Detection.organization_id.in_(org_ids))
     
+    # Map internal statuses to the 4 standard display categories
+    _STATUS_LABEL_MAP = {
+        "unassigned": "Pending Verification",
+        "pending": "Pending Verification",
+        "in_progress": "Detected \u2013 Awaiting Action",
+        "resolved": "Resolved (Successful)",
+        "failed": "Closed (Unsuccessful)",
+    }
+    grouped_counts: dict = {}
+    for h in hs_base.all():
+        raw_status = h.handling_status or "unassigned"
+        label = _STATUS_LABEL_MAP.get(raw_status, raw_status)
+        grouped_counts[label] = grouped_counts.get(label, 0) + h.count
+    
+    # Preserve a consistent order
+    _STATUS_ORDER = [
+        "Pending Verification",
+        "Detected \u2013 Awaiting Action",
+        "Resolved (Successful)",
+        "Closed (Unsuccessful)",
+    ]
     handling_status_breakdown = [
-        {"status": h.handling_status or "unassigned", "count": h.count}
-        for h in hs_base.all()
+        {"status": s, "count": grouped_counts.get(s, 0)}
+        for s in _STATUS_ORDER if grouped_counts.get(s, 0) > 0
     ]
 
     target_org_id = company_id if (company_id and company_id != "all") else None
@@ -917,8 +951,7 @@ def get_detailed_analytics(
     return {
         "totalDetections": total_detections,
         "resolutionRate": resolution_rate,
-        "acceptRate": accept_rate,
-        "avgHandlingTimeHours": avg_handling_time,
+        "avgResolutionTimeHours": avg_resolution_time,
         "recordsByCategory": records_by_category,
         "recordsByLocation": records_by_location,
         "handlingStatusBreakdown": handling_status_breakdown,
@@ -952,7 +985,10 @@ def get_raw_submissions(
     if category and category != "all":
         det_query = det_query.filter(models.Detection.category == category)
     if status and status != "all":
-        det_query = det_query.filter(models.Detection.handling_status == status)
+        if status == "pending_verification":
+            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", "pending", None]))
+        else:
+            det_query = det_query.filter(models.Detection.handling_status == status)
     if crime_type and crime_type != "all":
         det_query = det_query.filter(models.Detection.crime_type == crime_type)
     if start_date:
@@ -987,12 +1023,20 @@ def get_raw_submissions(
                     label = field_map.get(field_id, field_id)
                     resolved_dynamic.append({"label": label, "value": value})
 
+        # Resolve actual detection location from camera
+        raw_location = d.location or "Unknown"
+        cam_ids = d.detected_camera_ids or []
+        if cam_ids:
+            cam = db.query(models.Camera).filter(models.Camera.id == cam_ids[0]).first()
+            if cam and cam.location:
+                raw_location = cam.location
+
         results.append({
             "id": d.id,
             "type": "detection",
             "title": d.name or f"Detection {d.id[:8]}",
             "category": d.category,
-            "location": d.location or "Unknown",
+            "location": raw_location,
             "status": d.status,
             "handlingStatus": d.handling_status,
             "crimeType": d.crime_type,
@@ -1084,17 +1128,21 @@ def get_crime_type_analytics(
         for k, v in sorted(month_crime.items(), key=lambda x: x[0][0])
     ]
 
-    # 3. By location
-    loc_crime = db.query(
-        models.Detection.location,
-        models.Detection.crime_type,
-        func.count(models.Detection.id).label("count")
-    ).filter(models.Detection.crime_type.isnot(None), models.Detection.crime_type != "")
-    if org_ids:
-        loc_crime = loc_crime.filter(models.Detection.organization_id.in_(org_ids))
+    # 3. By location — use camera location instead of detection form location
+    crime_dets_for_loc = base_q.all()
+    loc_crime_counts: dict = {}
+    for d in crime_dets_for_loc:
+        cam_ids = d.detected_camera_ids or []
+        if cam_ids:
+            cam = db.query(models.Camera).filter(models.Camera.id == cam_ids[0]).first()
+            loc_name = (cam.location if cam and cam.location else d.location or "Unknown")
+        else:
+            loc_name = d.location or "Unknown"
+        key = (loc_name, d.crime_type)
+        loc_crime_counts[key] = loc_crime_counts.get(key, 0) + 1
     by_location = [
-        {"location": r.location or "Unknown", "crimeType": r.crime_type, "count": r.count}
-        for r in loc_crime.group_by(models.Detection.location, models.Detection.crime_type).all()
+        {"location": k[0], "crimeType": k[1], "count": v}
+        for k, v in sorted(loc_crime_counts.items(), key=lambda x: -x[1])
     ]
 
     # 4. By company

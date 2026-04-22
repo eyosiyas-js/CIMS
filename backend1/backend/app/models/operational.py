@@ -14,6 +14,7 @@ class Camera(Base, TimestampMixin):
     camera_stream_id = Column(String, nullable=True)  # streaming server camera UUID
     organization_id = Column(String, ForeignKey("organization.id"), nullable=True)
     linked_traffic_company_id = Column(String, ForeignKey("organization.id"), nullable=True)
+    last_detection_at = Column(DateTime, nullable=True)
     
     owner = relationship("Organization", back_populates="owned_cameras", foreign_keys=[organization_id])
     linked_traffic_company = relationship("Organization", foreign_keys=[linked_traffic_company_id])

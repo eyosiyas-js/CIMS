@@ -438,6 +438,7 @@ async def create_detection(
                             detection.handling_status = "pending"
 
             camera.is_flagged = True
+            camera.last_detection_at = datetime.utcnow()
             
             # Update detected cameras
             detection.detected_camera_ids = [cameraId]
@@ -838,6 +839,7 @@ async def update_detection(
                                 detection.dispatch_message = f"Retro-dispatched to {len(nearby)} officer(s) because no previous assignments existed."
 
                 camera.is_flagged = True
+                camera.last_detection_at = now
                 
                 curr_cameras = detection.detected_camera_ids or []
                 if cameraId not in curr_cameras:

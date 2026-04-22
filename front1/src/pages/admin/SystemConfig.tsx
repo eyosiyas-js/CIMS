@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSystemSettings, useUpdateSystemSetting } from "@/hooks/use-admin";
-import { Settings, Save, MapPin, Radio, Loader2, Info } from "lucide-react";
+import { Settings, Save, MapPin, Radio, Loader2, Info, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -142,6 +142,58 @@ export default function SystemConfig() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+        >
+          <Card className="glass-card overflow-hidden">
+            <CardHeader className="bg-destructive/5 border-b border-border/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-destructive/10 text-destructive">
+                  <Radio className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle>Detection Parameters</CardTitle>
+                  <CardDescription>Visual alert thresholds and persistence</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="camera_alert_timeout_minutes" className="text-sm font-medium flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-destructive" /> Camera Alert Timeout (Minutes)
+                  </Label>
+                  <div className="flex gap-3">
+                    <Input 
+                      id="camera_alert_timeout_minutes"
+                      type="number"
+                      step="1"
+                      placeholder="5"
+                      className="flex-1"
+                      value={localSettings["camera_alert_timeout_minutes"] || ""}
+                      onChange={(e) => handleChange("camera_alert_timeout_minutes", parseInt(e.target.value))}
+                    />
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleSave("camera_alert_timeout_minutes")}
+                      disabled={updateSetting.isPending}
+                      className="gap-2"
+                    >
+                      {updateSetting.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      Update
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    How long a camera icon stays in the "Alert" state on the map after the last detection.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3, delay: 0.1 }}
         >
           <Card className="glass-card border-l-4 border-l-primary h-full">
@@ -162,6 +214,7 @@ export default function SystemConfig() {
                   <li>Use larger radii (10km-20km) for rural/highway zones.</li>
                   <li>Use smaller radii (2km-5km) for dense urban areas to ensure faster response.</li>
                   <li>Consider officer staleness (currently 5 minutes) when setting wide ranges.</li>
+                  <li>Set alert timeouts carefully; too short might cause operators to miss alerts, too long can clutter the map with stale incidents.</li>
                 </ul>
               </div>
             </CardContent>

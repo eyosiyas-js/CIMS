@@ -158,7 +158,6 @@ export function CompanyComparison() {
                                             <TableHead>Organization</TableHead>
                                             <TableHead className="text-right">Total Detections</TableHead>
                                             <TableHead className="text-right">Resolution Rate</TableHead>
-                                            <TableHead className="text-right">Accept Rate</TableHead>
                                             <TableHead className="text-right">SLA Compliance</TableHead>
                                             <TableHead className="text-right">Avg Response Time</TableHead>
                                             <TableHead className="text-right">Avg Resolution Time</TableHead>
@@ -177,7 +176,6 @@ export function CompanyComparison() {
                                                         {row.resolutionRate}%
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="text-right">{row.acceptRate}%</TableCell>
                                                 <TableCell className="text-right">{row.slaComplianceRate}%</TableCell>
                                                 <TableCell className="text-right text-muted-foreground">{row.avgResponseTimeHours != null ? `${row.avgResponseTimeHours}h` : '—'}</TableCell>
                                                 <TableCell className="text-right text-muted-foreground">{row.avgResolutionTimeHours != null ? `${row.avgResolutionTimeHours}h` : '—'}</TableCell>

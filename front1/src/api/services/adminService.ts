@@ -200,8 +200,7 @@ export interface HandlingStatusStat {
 export interface DetailedAnalytics {
   totalDetections: number;
   resolutionRate: number;
-  acceptRate: number;
-  avgHandlingTimeHours: number | null;
+  avgResolutionTimeHours: number | null;
   recordsByCategory: CategoryStat[];
   recordsByLocation: LocationStat[];
   handlingStatusBreakdown: HandlingStatusStat[];
@@ -284,7 +283,6 @@ export interface CompanyComparisonMetrics {
   avgResolutionTimeHours: number | null;
   reopenRate: number;
   slaComplianceRate: number;
-  acceptRate: number;
 }
 
 export interface CompanyComparisonTrend {

@@ -25,6 +25,7 @@ class Camera(CameraBase):
     id: str
     organization_id: Optional[str] = None
     lastDetection: Optional[str] = None
+    lastDetectionAt: Optional[datetime] = None
     linkedTrafficCompanyName: Optional[str] = None
 
     class Config:

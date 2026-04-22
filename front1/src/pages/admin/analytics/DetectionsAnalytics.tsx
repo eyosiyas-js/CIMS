@@ -27,11 +27,25 @@ const tooltipStyle = {
 };
 
 const HANDLING_STATUS_COLORS: Record<string, string> = {
-    unassigned: "hsl(220, 14%, 60%)",
+    "Pending Verification": "hsl(38, 92%, 50%)",
+    "Detected \u2013 Awaiting Action": "hsl(199, 89%, 48%)",
+    "Resolved (Successful)": "hsl(152, 69%, 41%)",
+    "Closed (Unsuccessful)": "hsl(0, 72%, 51%)",
+    // Keep legacy keys for raw data table backwards compat
+    unassigned: "hsl(38, 92%, 50%)",
     pending: "hsl(38, 92%, 50%)",
     in_progress: "hsl(199, 89%, 48%)",
     resolved: "hsl(152, 69%, 41%)",
     failed: "hsl(0, 72%, 51%)",
+};
+
+/** Maps internal handling_status values to standardized display labels */
+const HANDLING_STATUS_LABEL_MAP: Record<string, string> = {
+    unassigned: "Pending Verification",
+    pending: "Pending Verification",
+    in_progress: "Detected \u2013 Awaiting Action",
+    resolved: "Resolved (Successful)",
+    failed: "Closed (Unsuccessful)",
 };
 
 function StatCard({ title, value, icon: Icon, trend, color, subtitle }: any) {
@@ -135,17 +149,16 @@ export function DetectionsAnalytics() {
                 </Select>
 
                 <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
-                    <SelectTrigger className="w-[170px] h-9">
+                    <SelectTrigger className="w-[220px] h-9">
                         <CheckCircle2 className="w-3.5 h-3.5 mr-2 opacity-70" />
                         <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="resolved">Resolved</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
+                        <SelectItem value="pending_verification">Pending Verification</SelectItem>
+                        <SelectItem value="in_progress">Detected – Awaiting Action</SelectItem>
+                        <SelectItem value="resolved">Resolved (Successful)</SelectItem>
+                        <SelectItem value="failed">Closed (Unsuccessful)</SelectItem>
                     </SelectContent>
                 </Select>
 
@@ -189,7 +202,7 @@ export function DetectionsAnalytics() {
 
                 {/* ── Overview Tab ── */}
                 <TabsContent value="overview" className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <StatCard 
                             title="Total Detections" 
                             value={analytics?.totalDetections ?? 0} 
@@ -204,18 +217,11 @@ export function DetectionsAnalytics() {
                             subtitle="Of assigned detections"
                         />
                         <StatCard 
-                            title="Accept Rate" 
-                            value={`${analytics?.acceptRate ?? 0}%`} 
-                            icon={TrendingUp} 
-                            color="indigo" 
-                            subtitle="Accepted for handling"
-                        />
-                        <StatCard 
-                            title="Avg Handling Time" 
-                            value={analytics?.avgHandlingTimeHours != null ? `${analytics.avgHandlingTimeHours}h` : "N/A"} 
+                            title="Avg Resolution Time" 
+                            value={analytics?.avgResolutionTimeHours != null ? `${analytics.avgResolutionTimeHours}h` : "N/A"} 
                             icon={Clock} 
                             color="orange" 
-                            subtitle="Created → Resolved"
+                            subtitle="Detection → Resolution/Closure"
                         />
                     </div>
 
@@ -289,7 +295,7 @@ export function DetectionsAnalytics() {
                                             <div key={item.status} className="flex justify-between items-center text-sm">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: HANDLING_STATUS_COLORS[item.status] || "#888" }} />
-                                                    <span className="capitalize">{item.status.replace("_", " ")}</span>
+                                                    <span>{item.status}</span>
                                                 </div>
                                                 <span className="font-semibold">{item.count}</span>
                                             </div>
@@ -366,7 +372,7 @@ export function DetectionsAnalytics() {
 
                 {/* ── Performance Tab ── */}
                 <TabsContent value="performance" className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="overflow-hidden border-none bg-emerald-500/10 shadow-none">
                             <CardContent className="p-6 text-center">
                                 <p className="text-sm font-medium text-muted-foreground mb-1">Resolution Rate</p>
@@ -374,20 +380,13 @@ export function DetectionsAnalytics() {
                                 <p className="text-xs text-muted-foreground mt-2">Of assigned detections resolved successfully</p>
                             </CardContent>
                         </Card>
-                        <Card className="overflow-hidden border-none bg-blue-500/10 shadow-none">
-                            <CardContent className="p-6 text-center">
-                                <p className="text-sm font-medium text-muted-foreground mb-1">Accept Rate</p>
-                                <h3 className="text-4xl font-bold text-blue-500">{analytics?.acceptRate ?? 0}%</h3>
-                                <p className="text-xs text-muted-foreground mt-2">Detections accepted for processing</p>
-                            </CardContent>
-                        </Card>
                         <Card className="overflow-hidden border-none bg-orange-500/10 shadow-none">
                             <CardContent className="p-6 text-center">
-                                <p className="text-sm font-medium text-muted-foreground mb-1">Avg Handling Time</p>
+                                <p className="text-sm font-medium text-muted-foreground mb-1">Average Resolution Time</p>
                                 <h3 className="text-4xl font-bold text-orange-500">
-                                    {analytics?.avgHandlingTimeHours != null ? `${analytics.avgHandlingTimeHours}h` : "N/A"}
+                                    {analytics?.avgResolutionTimeHours != null ? `${analytics.avgResolutionTimeHours}h` : "N/A"}
                                 </h3>
-                                <p className="text-xs text-muted-foreground mt-2">Average time from creation to resolution</p>
+                                <p className="text-xs text-muted-foreground mt-2">Average time from detection to resolution or closure</p>
                             </CardContent>
                         </Card>
                     </div>
@@ -402,7 +401,7 @@ export function DetectionsAnalytics() {
                                 <BarChart data={analytics?.handlingStatusBreakdown ?? []} layout="vertical">
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                                    <YAxis type="category" dataKey="status" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={100} tickFormatter={(v: string) => v.replace("_", " ")} />
+                                    <YAxis type="category" dataKey="status" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={180} />
                                     <Tooltip contentStyle={tooltipStyle} />
                                     <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={30}>
                                         {(analytics?.handlingStatusBreakdown ?? []).map((item: any, i: number) => (
@@ -466,7 +465,7 @@ export function DetectionsAnalytics() {
                                                         className="text-[10px] capitalize px-1.5 py-0"
                                                         style={{ borderColor: HANDLING_STATUS_COLORS[row.handlingStatus] || undefined, color: HANDLING_STATUS_COLORS[row.handlingStatus] || undefined }}
                                                     >
-                                                        {(row.handlingStatus || "unassigned").replace("_", " ")}
+                                                        {HANDLING_STATUS_LABEL_MAP[row.handlingStatus || "unassigned"] || row.handlingStatus || "Pending Verification"}
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground text-[11px]">
@@ -565,8 +564,8 @@ export function DetectionsAnalytics() {
                                         <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Assigned To:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.assignedCompanyName || "Unassigned"}</span></div>
                                         <div className="grid grid-cols-3 text-muted-foreground">
                                             <span className="col-span-1">Action Status:</span>
-                                            <span className="col-span-2 font-medium capitalize" style={{ color: HANDLING_STATUS_COLORS[selectedRow.handlingStatus || "unassigned"] }}>
-                                                {(selectedRow.handlingStatus || "unassigned").replace("_", " ")}
+                                            <span className="col-span-2 font-medium" style={{ color: HANDLING_STATUS_COLORS[selectedRow.handlingStatus || "unassigned"] }}>
+                                                {HANDLING_STATUS_LABEL_MAP[selectedRow.handlingStatus || "unassigned"] || selectedRow.handlingStatus || "Pending Verification"}
                                             </span>
                                         </div>
                                         {selectedRow.handlingNotes && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Notes:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.handlingNotes}</span></div>}
