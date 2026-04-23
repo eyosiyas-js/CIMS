@@ -913,9 +913,9 @@ def get_detailed_analytics(
 
     # Records by Category — exactly 4 subcategory-level buckets
     _SUBCAT_LABELS = {
-        ("person", "missing_person"): "Missing Person",
+        ("person", "missing"): "Missing Person",
         ("person", "criminal"): "Criminal Person",
-        ("vehicle", "missing_person"): "Missing Vehicle",
+        ("vehicle", "missing"): "Missing Vehicle",
         ("vehicle", "criminal"): "Criminal Vehicle",
     }
     # Default mapping for detections without subcategory

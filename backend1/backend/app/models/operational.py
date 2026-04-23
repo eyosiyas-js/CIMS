@@ -35,7 +35,7 @@ class Detection(Base, TimestampMixin):
     description = Column(String)
     age = Column(String)
     location = Column(String)
-    subcategory = Column(String) # missing_person, criminal
+    subcategory = Column(String) # missing, criminal
     crime_type = Column(String, nullable=True) # only when subcategory=criminal
     image_urls = Column(JSON)
     status = Column(String, default="pending") # pending, monitoring, detected

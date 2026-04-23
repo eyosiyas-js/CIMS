@@ -144,7 +144,6 @@ export function DetectionsAnalytics() {
                         <SelectItem value="all">All Categories</SelectItem>
                         <SelectItem value="person">Person</SelectItem>
                         <SelectItem value="vehicle">Vehicle</SelectItem>
-                        <SelectItem value="object">Object</SelectItem>
                     </SelectContent>
                 </Select>
 

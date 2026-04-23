@@ -1,6 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel
 from datetime import datetime
+
+# Strict allowed values for detection classification
+CATEGORY_VALUES = Literal["person", "vehicle"]
+SUBCATEGORY_VALUES = Literal["missing", "criminal"]
 
 # ── Camera Schemas ──────────────────────────────
 class CameraBase(BaseModel):
@@ -48,12 +52,12 @@ class CameraAccessToggle(BaseModel):
 
 # ── Detection Schemas ───────────────────────────
 class DetectionBase(BaseModel):
-    category: str # person, vehicle
+    category: CATEGORY_VALUES # person, vehicle
     name: str
     description: Optional[str] = None
     age: Optional[str] = None
     location: Optional[str] = None
-    subcategory: Optional[str] = None
+    subcategory: Optional[SUBCATEGORY_VALUES] = None
     crimeType: Optional[str] = None
     imageUrls: Optional[List[str]] = []
     status: Optional[str] = "pending"
@@ -74,12 +78,12 @@ class DetectionCreate(DetectionBase):
     pass
 
 class DetectionUpdate(BaseModel):
-    category: Optional[str] = None
+    category: Optional[CATEGORY_VALUES] = None
     name: Optional[str] = None
     description: Optional[str] = None
     age: Optional[str] = None
     location: Optional[str] = None
-    subcategory: Optional[str] = None
+    subcategory: Optional[SUBCATEGORY_VALUES] = None
     crimeType: Optional[str] = None
     imageUrls: Optional[List[str]] = None
     status: Optional[str] = None

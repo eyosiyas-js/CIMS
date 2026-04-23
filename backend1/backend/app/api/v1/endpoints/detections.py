@@ -16,6 +16,10 @@ from app.core.websockets import manager
 
 router = APIRouter()
 
+# Strict allowed values
+_VALID_CATEGORIES = {"person", "vehicle"}
+_VALID_SUBCATEGORIES = {"missing", "criminal"}
+
 # In-memory throttle cache: "detection_id::camera_id" -> datetime of last trigger
 _detection_throttle_cache: dict = {}
 
@@ -168,6 +172,18 @@ async def create_detection(
         raise HTTPException(
             status_code=403,
             detail="Traffic Police companies can only submit vehicle detections"
+        )
+
+    # ── Strict category / subcategory validation ──
+    if category not in _VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category '{category}'. Allowed values: {', '.join(_VALID_CATEGORIES)}"
+        )
+    if subcategory is not None and subcategory not in _VALID_SUBCATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subcategory '{subcategory}'. Allowed values: {', '.join(_VALID_SUBCATEGORIES)}"
         )
 
     import datetime as dt
@@ -563,6 +579,18 @@ async def update_detection(
     if subcategory is not None: update_data["subcategory"] = subcategory
     if crimeType is not None: update_data["crimeType"] = crimeType
     if status is not None: update_data["status"] = status
+
+    # ── Strict category / subcategory validation ──
+    if category is not None and category not in _VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category '{category}'. Allowed values: {', '.join(_VALID_CATEGORIES)}"
+        )
+    if subcategory is not None and subcategory not in _VALID_SUBCATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subcategory '{subcategory}'. Allowed values: {', '.join(_VALID_SUBCATEGORIES)}"
+        )
     if formTemplateId is not None: update_data["formTemplateId"] = formTemplateId
     
     if plateNumber is not None: update_data["plateNumber"] = plateNumber

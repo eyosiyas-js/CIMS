@@ -5,11 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { History as HistoryIcon, Search, Filter, User, Car, Package, Eye, Clock, CheckCircle, AlertCircle, Download } from "lucide-react";
+import { History as HistoryIcon, Search, Filter, User, Car, Eye, Clock, CheckCircle, AlertCircle, Download } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { useState } from "react";
 
-const categoryIcons = { person: User, vehicle: Car, object: Package };
+const categoryIcons = { person: User, vehicle: Car };
 
 export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");

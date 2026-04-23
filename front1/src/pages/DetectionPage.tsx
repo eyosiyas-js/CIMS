@@ -60,14 +60,14 @@ const statusColors = {
 function getSubcategoryLabel(category: string, subcategory: string): string {
   if (category === "vehicle") {
     switch (subcategory) {
-      case "missing_person": return "Missing Car";
+      case "missing": return "Missing Car";
       case "criminal": return "Crime Vehicle";
       default: return subcategory.replace("_", " ");
     }
   }
   // person or default
   switch (subcategory) {
-    case "missing_person": return "Missing Person";
+    case "missing": return "Missing Person";
     case "criminal": return "Criminal";
     default: return subcategory.replace("_", " ");
   }
@@ -80,7 +80,7 @@ export default function DetectionPage() {
     description: "",
     age: "",
     location: "",
-    subcategory: "" as "missing_person" | "criminal" | "",
+    subcategory: "" as "missing" | "criminal" | "",
     crimeType: "",
     plateNumber: "",
     code: "",
@@ -99,7 +99,7 @@ export default function DetectionPage() {
     description: "",
     age: "",
     location: "",
-    subcategory: "" as "missing_person" | "criminal" | "",
+    subcategory: "" as "missing" | "criminal" | "",
     crimeType: "",
     status: "",
     plateNumber: "",
@@ -258,7 +258,7 @@ export default function DetectionPage() {
         location: selectedCategory === "person" ? formData.location : undefined,
         subcategory:
           (selectedCategory === "person" || selectedCategory === "vehicle") && formData.subcategory
-            ? (formData.subcategory as "missing_person" | "criminal")
+            ? (formData.subcategory as "missing" | "criminal")
             : undefined,
         crimeType:
           selectedCategory === "person" && formData.subcategory === "criminal" && formData.crimeType
@@ -302,7 +302,7 @@ export default function DetectionPage() {
               });
             }
 
-            if (formData.subcategory === "missing_person") {
+            if (formData.subcategory === "missing") {
 
               const form = new FormData();
               form.append("name", formData.name);
@@ -416,7 +416,7 @@ export default function DetectionPage() {
                           <SelectValue placeholder="Select type..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="missing_person">Missing Person</SelectItem>
+                          <SelectItem value="missing">Missing Person</SelectItem>
                           <SelectItem value="criminal">Criminal</SelectItem>
                         </SelectContent>
                       </Select>
@@ -510,7 +510,7 @@ export default function DetectionPage() {
                           <SelectValue placeholder="Select type..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="missing_person">Stolen / Missing</SelectItem>
+                          <SelectItem value="missing">Stolen / Missing</SelectItem>
                           <SelectItem value="criminal">Wanted for Crime</SelectItem>
                         </SelectContent>
                       </Select>
@@ -732,7 +732,7 @@ export default function DetectionPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="missing_person">Missing Person</SelectItem>
+                            <SelectItem value="missing">Missing Person</SelectItem>
                             <SelectItem value="criminal">Criminal</SelectItem>
                           </SelectContent>
                         </Select>
@@ -785,7 +785,7 @@ export default function DetectionPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="missing_person">Stolen / Missing</SelectItem>
+                              <SelectItem value="missing">Stolen / Missing</SelectItem>
                               <SelectItem value="criminal">Wanted for Crime</SelectItem>
                             </SelectContent>
                           </Select>
