@@ -202,7 +202,7 @@ export function DetectionsAnalytics() {
 
                 {/* ── Overview Tab ── */}
                 <TabsContent value="overview" className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <StatCard 
                             title="Total Detections" 
                             value={analytics?.totalDetections ?? 0} 
@@ -217,11 +217,18 @@ export function DetectionsAnalytics() {
                             subtitle="Of assigned detections"
                         />
                         <StatCard 
-                            title="Avg Resolution Time" 
-                            value={analytics?.avgResolutionTimeHours != null ? `${analytics.avgResolutionTimeHours}h` : "N/A"} 
+                            title="Avg Time (Creation → Close)" 
+                            value={analytics?.avgCreationToResolutionHours != null ? `${analytics.avgCreationToResolutionHours}h` : "N/A"} 
                             icon={Clock} 
                             color="orange" 
-                            subtitle="Detection → Resolution/Closure"
+                            subtitle="From creation to resolution"
+                        />
+                        <StatCard 
+                            title="Avg Time (Detection → Close)" 
+                            value={analytics?.avgDetectionToResolutionHours != null ? `${analytics.avgDetectionToResolutionHours}h` : "N/A"} 
+                            icon={Clock} 
+                            color="orange" 
+                            subtitle="From first camera trigger to resolution"
                         />
                     </div>
 
@@ -372,7 +379,7 @@ export function DetectionsAnalytics() {
 
                 {/* ── Performance Tab ── */}
                 <TabsContent value="performance" className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <Card className="overflow-hidden border-none bg-emerald-500/10 shadow-none">
                             <CardContent className="p-6 text-center">
                                 <p className="text-sm font-medium text-muted-foreground mb-1">Resolution Rate</p>
@@ -382,11 +389,20 @@ export function DetectionsAnalytics() {
                         </Card>
                         <Card className="overflow-hidden border-none bg-orange-500/10 shadow-none">
                             <CardContent className="p-6 text-center">
-                                <p className="text-sm font-medium text-muted-foreground mb-1">Average Resolution Time</p>
+                                <p className="text-sm font-medium text-muted-foreground mb-1">Avg Time (Creation → Close)</p>
                                 <h3 className="text-4xl font-bold text-orange-500">
-                                    {analytics?.avgResolutionTimeHours != null ? `${analytics.avgResolutionTimeHours}h` : "N/A"}
+                                    {analytics?.avgCreationToResolutionHours != null ? `${analytics.avgCreationToResolutionHours}h` : "N/A"}
                                 </h3>
-                                <p className="text-xs text-muted-foreground mt-2">Average time from detection to resolution or closure</p>
+                                <p className="text-xs text-muted-foreground mt-2">Average time from creation to resolution or closure</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="overflow-hidden border-none bg-amber-500/10 shadow-none">
+                            <CardContent className="p-6 text-center">
+                                <p className="text-sm font-medium text-muted-foreground mb-1">Avg Time (Detection → Close)</p>
+                                <h3 className="text-4xl font-bold text-amber-500">
+                                    {analytics?.avgDetectionToResolutionHours != null ? `${analytics.avgDetectionToResolutionHours}h` : "N/A"}
+                                </h3>
+                                <p className="text-xs text-muted-foreground mt-2">Average time from first camera trigger to resolution</p>
                             </CardContent>
                         </Card>
                     </div>

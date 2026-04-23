@@ -59,7 +59,9 @@ class HandlingStatusStat(BaseModel):
 class DetailedAnalytics(BaseModel):
     totalDetections: int
     resolutionRate: float          # % of detections resolved
-    avgResolutionTimeHours: Optional[float] = None  # avg hours from creation to resolution/closure
+    avgResolutionTimeHours: Optional[float] = None  # backward compat alias (same as creation→resolution)
+    avgCreationToResolutionHours: Optional[float] = None  # avg hours from creation to resolution/closure
+    avgDetectionToResolutionHours: Optional[float] = None  # avg hours from first camera detection to resolution/closure
     recordsByCategory: List[CategoryStat]
     recordsByLocation: List[LocationStat]
     handlingStatusBreakdown: List[HandlingStatusStat]

@@ -92,7 +92,6 @@ export default function DeviceManagement() {
       streamUrl: formData.get("streamUrl") as string,
       status: formData.get("status") as string,
       organizationId: formData.get("organizationId") === "internal" ? undefined : formData.get("organizationId") as string | undefined,
-      linkedTrafficCompanyId: formData.get("linkedTrafficCompanyId") === "none" ? undefined : formData.get("linkedTrafficCompanyId") as string | undefined,
       lat: formLat,
       lng: formLng,
     };
@@ -283,7 +282,7 @@ export default function DeviceManagement() {
       {/* Camera Form Dialog */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[600px] glass-card max-h-[90vh] overflow-y-auto">
-          <form onSubmit={handleCreateOrUpdate}>
+          <form key={editingDevice?.id || "new"} onSubmit={handleCreateOrUpdate}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {editingDevice ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
@@ -320,7 +319,7 @@ export default function DeviceManagement() {
               
               <div className="grid gap-2">
                 <Label htmlFor="organizationId">Linked Company</Label>
-                <Select name="organizationId" defaultValue={editingDevice?.organizationId || "internal"}>
+                <Select name="organizationId" defaultValue={editingDevice?.organizationId || editingDevice?.companyId || "internal"}>
                   <SelectTrigger className="bg-background/50"><SelectValue placeholder="Internal / No External Link" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="internal">Internal / No External Link</SelectItem>
@@ -329,22 +328,6 @@ export default function DeviceManagement() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="linkedTrafficCompanyId">Linked Traffic Company (Routing)</Label>
-                <Select name="linkedTrafficCompanyId" defaultValue={editingDevice?.linkedTrafficCompanyId || "none"}>
-                  <SelectTrigger className="bg-background/50"><SelectValue placeholder="None" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (General Pool)</SelectItem>
-                    {companies.filter((c: any) => c.companyType === "traffic_police").map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>Traffic Police: {c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-muted-foreground italic">
-                  Vehicle detections from this camera will be routed exclusively to this company.
-                </p>
               </div>
 
               {/* Location Section */}

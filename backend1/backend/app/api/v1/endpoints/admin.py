@@ -794,9 +794,13 @@ def get_devices(
             "name": d.name,
             "type": "camera",
             "companyId": d.organization_id,
+            "organizationId": d.organization_id,
             "companyName": d.owner.name if d.owner else "",
             "linkedTrafficCompanyId": d.linked_traffic_company_id,
             "location": d.location,
+            "lat": d.lat,
+            "lng": d.lng,
+            "streamUrl": d.stream_url,
             "status": d.status,
             "lastActivity": d.updated_at.isoformat(),
             "firmware": "v1.0.0"
@@ -858,34 +862,88 @@ def get_detailed_analytics(
     resolved_count = det_query.filter(models.Detection.handling_status == "resolved").count()
     resolution_rate = round((resolved_count / assigned_count * 100) if assigned_count > 0 else 0, 1)
 
-    # Avg Resolution Time: for resolved AND failed detections, diff between updated_at and created_at
+    # Avg Resolution Time: for resolved AND failed detections
+    # 1) Creation → Resolution: diff between updated_at and created_at
+    # 2) Detection → Resolution: diff between updated_at and first detection_events timestamp
     closed_dets = det_query.filter(
         models.Detection.handling_status.in_(["resolved", "failed"])
     ).all()
+    avg_creation_to_resolution = None
+    avg_detection_to_resolution = None
     if closed_dets:
-        valid_dets = [d for d in closed_dets if d.updated_at and d.created_at]
-        if valid_dets:
-            total_hours = sum(
+        # Creation → Resolution
+        valid_creation = [d for d in closed_dets if d.updated_at and d.created_at]
+        if valid_creation:
+            total_hours_creation = sum(
                 (d.updated_at - d.created_at).total_seconds() / 3600
-                for d in valid_dets
+                for d in valid_creation
             )
-            avg_resolution_time = round(total_hours / len(valid_dets), 1)
-        else:
-            avg_resolution_time = None
-    else:
-        avg_resolution_time = None
+            avg_creation_to_resolution = round(total_hours_creation / len(valid_creation), 1)
 
-    # Records by Category
+        # Detection → Resolution (first event timestamp from detection_events JSON)
+        valid_detection = []
+        for d in closed_dets:
+            if not d.updated_at or not d.detection_events:
+                continue
+            events = d.detection_events if isinstance(d.detection_events, list) else []
+            if not events:
+                continue
+            # Find the earliest event timestamp
+            earliest_ts = None
+            for evt in events:
+                ts_str = evt.get("timestamp") if isinstance(evt, dict) else None
+                if ts_str:
+                    try:
+                        ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        # Make naive for comparison if needed
+                        if ts.tzinfo:
+                            ts = ts.replace(tzinfo=None)
+                        if earliest_ts is None or ts < earliest_ts:
+                            earliest_ts = ts
+                    except (ValueError, TypeError):
+                        continue
+            if earliest_ts:
+                valid_detection.append((d, earliest_ts))
+        if valid_detection:
+            total_hours_detection = sum(
+                (d.updated_at - first_ts).total_seconds() / 3600
+                for d, first_ts in valid_detection
+            )
+            avg_detection_to_resolution = round(total_hours_detection / len(valid_detection), 1)
+
+    # Records by Category — exactly 4 subcategory-level buckets
+    _SUBCAT_LABELS = {
+        ("person", "missing_person"): "Missing Person",
+        ("person", "criminal"): "Criminal Person",
+        ("vehicle", "missing_person"): "Missing Vehicle",
+        ("vehicle", "criminal"): "Criminal Vehicle",
+    }
+    # Default mapping for detections without subcategory
+    _DEFAULT_SUBCAT = {
+        "person": "Missing Person",
+        "vehicle": "Missing Vehicle",
+    }
+    _ALL_LABELS = ["Missing Person", "Criminal Person", "Missing Vehicle", "Criminal Vehicle"]
+
     cat_base = db.query(
-        models.Detection.category, 
+        models.Detection.category,
+        models.Detection.subcategory,
         func.count(models.Detection.id).label("count")
-    ).group_by(models.Detection.category)
+    ).group_by(models.Detection.category, models.Detection.subcategory)
     if org_ids:
         cat_base = cat_base.filter(models.Detection.organization_id.in_(org_ids))
     
+    label_counts: dict = {label: 0 for label in _ALL_LABELS}
+    for row in cat_base.all():
+        label = _SUBCAT_LABELS.get((row.category, row.subcategory))
+        if not label:
+            # Detections without a subcategory fall into the default bucket
+            label = _DEFAULT_SUBCAT.get(row.category)
+        if label:
+            label_counts[label] = label_counts.get(label, 0) + row.count
     records_by_category = [
-        {"category": c.category, "count": c.count, "trend": 0.0}
-        for c in cat_base.all()
+        {"category": label, "count": label_counts[label], "trend": 0.0}
+        for label in _ALL_LABELS
     ]
 
     # Records by Location — use the camera's location field (not the detection form's "Last Known Location")
@@ -951,7 +1009,9 @@ def get_detailed_analytics(
     return {
         "totalDetections": total_detections,
         "resolutionRate": resolution_rate,
-        "avgResolutionTimeHours": avg_resolution_time,
+        "avgResolutionTimeHours": avg_creation_to_resolution,  # backward compat
+        "avgCreationToResolutionHours": avg_creation_to_resolution,
+        "avgDetectionToResolutionHours": avg_detection_to_resolution,
         "recordsByCategory": records_by_category,
         "recordsByLocation": records_by_location,
         "handlingStatusBreakdown": handling_status_breakdown,

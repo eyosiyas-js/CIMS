@@ -187,25 +187,28 @@ async def create_detection(
         ).order_by(models.Detection.updated_at.desc()).first()
         
         if existing_detection:
-            # Route directly to update_detection to merge instead of duplicating
+            # Route to update_detection to merge camera event, but DO NOT forward
+            # the engine's data fields — they could overwrite the original detection.
+            # Only pass cameraId (to record the new event) and imageFiles (for snapshot).
+            # All other fields are None so update_detection's guards skip them.
             return await update_detection(
                 db=db,
                 id=existing_detection.id,
-                category=category,
-                name=name,
-                description=description,
-                age=age,
-                location=location,
-                subcategory=subcategory,
-                crimeType=crimeType,
+                category=None,
+                name=None,
+                description=None,
+                age=None,
+                location=None,
+                subcategory=None,
+                crimeType=None,
                 status=None,
                 cameraId=cameraId,
-                formTemplateId=formTemplateId,
-                dynamicData=dynamicData,
-                eligibleForAssignment=eligibleForAssignment,
-                plateNumber=plateNumber,
-                code=code,
-                region=region,
+                formTemplateId=None,
+                dynamicData=None,
+                eligibleForAssignment=None,
+                plateNumber=None,
+                code=None,
+                region=None,
                 imageFiles=imageFiles,
                 current_user=current_user
             )

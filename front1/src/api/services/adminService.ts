@@ -201,6 +201,8 @@ export interface DetailedAnalytics {
   totalDetections: number;
   resolutionRate: number;
   avgResolutionTimeHours: number | null;
+  avgCreationToResolutionHours: number | null;
+  avgDetectionToResolutionHours: number | null;
   recordsByCategory: CategoryStat[];
   recordsByLocation: LocationStat[];
   handlingStatusBreakdown: HandlingStatusStat[];
