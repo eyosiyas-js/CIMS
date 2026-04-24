@@ -27,12 +27,13 @@ const tooltipStyle = {
 };
 
 const HANDLING_STATUS_COLORS: Record<string, string> = {
-    "Pending Verification": "hsl(38, 92%, 50%)",
-    "Detected \u2013 Awaiting Action": "hsl(199, 89%, 48%)",
+    "Submitted \u2013 Not Triggered": "hsl(220, 9%, 55%)",
+    "Detected \u2013 Pending Action": "hsl(38, 92%, 50%)",
+    "In Progress": "hsl(199, 89%, 48%)",
     "Resolved (Successful)": "hsl(152, 69%, 41%)",
     "Closed (Unsuccessful)": "hsl(0, 72%, 51%)",
     // Keep legacy keys for raw data table backwards compat
-    unassigned: "hsl(38, 92%, 50%)",
+    unassigned: "hsl(220, 9%, 55%)",
     pending: "hsl(38, 92%, 50%)",
     in_progress: "hsl(199, 89%, 48%)",
     resolved: "hsl(152, 69%, 41%)",
@@ -41,9 +42,9 @@ const HANDLING_STATUS_COLORS: Record<string, string> = {
 
 /** Maps internal handling_status values to standardized display labels */
 const HANDLING_STATUS_LABEL_MAP: Record<string, string> = {
-    unassigned: "Pending Verification",
-    pending: "Pending Verification",
-    in_progress: "Detected \u2013 Awaiting Action",
+    unassigned: "Submitted \u2013 Not Triggered",
+    pending: "Detected \u2013 Pending Action",
+    in_progress: "In Progress",
     resolved: "Resolved (Successful)",
     failed: "Closed (Unsuccessful)",
 };
@@ -154,8 +155,9 @@ export function DetectionsAnalytics() {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending_verification">Pending Verification</SelectItem>
-                        <SelectItem value="in_progress">Detected – Awaiting Action</SelectItem>
+                        <SelectItem value="unassigned">Submitted – Not Triggered</SelectItem>
+                        <SelectItem value="pending">Detected – Pending Action</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
                         <SelectItem value="resolved">Resolved (Successful)</SelectItem>
                         <SelectItem value="failed">Closed (Unsuccessful)</SelectItem>
                     </SelectContent>

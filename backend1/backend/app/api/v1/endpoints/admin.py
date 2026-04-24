@@ -837,8 +837,8 @@ def get_detailed_analytics(
     if category and category != "all":
         det_query = det_query.filter(models.Detection.category == category)
     if status and status != "all":
-        if status == "pending_verification":
-            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", "pending", None]))
+        if status == "unassigned":
+            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", None]))
         else:
             det_query = det_query.filter(models.Detection.handling_status == status)
     if start_date:
@@ -976,11 +976,11 @@ def get_detailed_analytics(
     if org_ids:
         hs_base = hs_base.filter(models.Detection.organization_id.in_(org_ids))
     
-    # Map internal statuses to the 4 standard display categories
+    # Map internal statuses to the 5 standard display categories
     _STATUS_LABEL_MAP = {
-        "unassigned": "Pending Verification",
-        "pending": "Pending Verification",
-        "in_progress": "Detected \u2013 Awaiting Action",
+        "unassigned": "Submitted \u2013 Not Triggered",
+        "pending": "Detected \u2013 Pending Action",
+        "in_progress": "In Progress",
         "resolved": "Resolved (Successful)",
         "failed": "Closed (Unsuccessful)",
     }
@@ -992,8 +992,9 @@ def get_detailed_analytics(
     
     # Preserve a consistent order
     _STATUS_ORDER = [
-        "Pending Verification",
-        "Detected \u2013 Awaiting Action",
+        "Submitted \u2013 Not Triggered",
+        "Detected \u2013 Pending Action",
+        "In Progress",
         "Resolved (Successful)",
         "Closed (Unsuccessful)",
     ]
@@ -1045,8 +1046,8 @@ def get_raw_submissions(
     if category and category != "all":
         det_query = det_query.filter(models.Detection.category == category)
     if status and status != "all":
-        if status == "pending_verification":
-            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", "pending", None]))
+        if status == "unassigned":
+            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", None]))
         else:
             det_query = det_query.filter(models.Detection.handling_status == status)
     if crime_type and crime_type != "all":
