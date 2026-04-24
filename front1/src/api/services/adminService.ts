@@ -192,7 +192,7 @@ export interface LocationStat {
   count: number;
 }
 
-export interface HandlingStatusStat {
+export interface DetectionStatusStat {
   status: string;
   count: number;
 }
@@ -205,7 +205,7 @@ export interface DetailedAnalytics {
   avgDetectionToResolutionHours: number | null;
   recordsByCategory: CategoryStat[];
   recordsByLocation: LocationStat[];
-  handlingStatusBreakdown: HandlingStatusStat[];
+  detectionStatusBreakdown: DetectionStatusStat[];
   monthlyTrends: any[];
 }
 

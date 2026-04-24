@@ -837,10 +837,7 @@ def get_detailed_analytics(
     if category and category != "all":
         det_query = det_query.filter(models.Detection.category == category)
     if status and status != "all":
-        if status == "unassigned":
-            det_query = det_query.filter(models.Detection.handling_status.in_(["unassigned", None]))
-        else:
-            det_query = det_query.filter(models.Detection.handling_status == status)
+        det_query = det_query.filter(models.Detection.status == status)
     if start_date:
         try:
             sd = datetime.datetime.fromisoformat(start_date)
@@ -911,6 +908,12 @@ def get_detailed_analytics(
             )
             avg_detection_to_resolution = round(total_hours_detection / len(valid_detection), 1)
 
+    # ── Build a reusable filtered subquery for all breakdown charts ──
+    # This ensures category, location, and status breakdowns all respect
+    # the same filters (org, location, category, status, dates) as the
+    # main det_query, so that chart numbers match the total count.
+    filtered_ids_sq = det_query.with_entities(models.Detection.id).subquery()
+
     # Records by Category — exactly 4 subcategory-level buckets
     _SUBCAT_LABELS = {
         ("person", "missing"): "Missing Person",
@@ -929,9 +932,9 @@ def get_detailed_analytics(
         models.Detection.category,
         models.Detection.subcategory,
         func.count(models.Detection.id).label("count")
+    ).filter(
+        models.Detection.id.in_(filtered_ids_sq)
     ).group_by(models.Detection.category, models.Detection.subcategory)
-    if org_ids:
-        cat_base = cat_base.filter(models.Detection.organization_id.in_(org_ids))
     
     label_counts: dict = {label: 0 for label in _ALL_LABELS}
     for row in cat_base.all():
@@ -968,39 +971,36 @@ def get_detailed_analytics(
     ]
 
 
-    # Handling Status Breakdown — grouped into 4 standard categories
-    hs_base = db.query(
-        models.Detection.handling_status,
+    # Detection Status Breakdown — uses the actual detection status field
+    # so it matches what the Detection page displays
+    # Uses the same filtered subquery so counts match the detection list
+    ds_base = db.query(
+        models.Detection.status,
         func.count(models.Detection.id).label("count")
-    ).group_by(models.Detection.handling_status)
-    if org_ids:
-        hs_base = hs_base.filter(models.Detection.organization_id.in_(org_ids))
+    ).filter(
+        models.Detection.id.in_(filtered_ids_sq)
+    ).group_by(models.Detection.status)
     
-    # Map internal statuses to the 5 standard display categories
-    _STATUS_LABEL_MAP = {
-        "unassigned": "Submitted \u2013 Not Triggered",
-        "pending": "Detected \u2013 Pending Action",
+    # Map internal status values to display labels
+    _DET_STATUS_LABEL_MAP = {
+        "pending": "Pending",
+        "monitoring": "Monitoring",
+        "detected": "Detected",
         "in_progress": "In Progress",
-        "resolved": "Resolved (Successful)",
-        "failed": "Closed (Unsuccessful)",
+        "resolved": "Resolved",
+        "failed": "Failed",
     }
-    grouped_counts: dict = {}
-    for h in hs_base.all():
-        raw_status = h.handling_status or "unassigned"
-        label = _STATUS_LABEL_MAP.get(raw_status, raw_status)
-        grouped_counts[label] = grouped_counts.get(label, 0) + h.count
+    det_status_counts: dict = {}
+    for row in ds_base.all():
+        raw_status = row.status or "pending"
+        label = _DET_STATUS_LABEL_MAP.get(raw_status, raw_status.replace("_", " ").title())
+        det_status_counts[label] = det_status_counts.get(label, 0) + row.count
     
     # Preserve a consistent order
-    _STATUS_ORDER = [
-        "Submitted \u2013 Not Triggered",
-        "Detected \u2013 Pending Action",
-        "In Progress",
-        "Resolved (Successful)",
-        "Closed (Unsuccessful)",
-    ]
-    handling_status_breakdown = [
-        {"status": s, "count": grouped_counts.get(s, 0)}
-        for s in _STATUS_ORDER if grouped_counts.get(s, 0) > 0
+    _DET_STATUS_ORDER = ["Pending", "Monitoring", "Detected", "In Progress", "Resolved", "Failed"]
+    detection_status_breakdown = [
+        {"status": s, "count": det_status_counts.get(s, 0)}
+        for s in _DET_STATUS_ORDER if det_status_counts.get(s, 0) > 0
     ]
 
     target_org_id = company_id if (company_id and company_id != "all") else None
@@ -1015,7 +1015,7 @@ def get_detailed_analytics(
         "avgDetectionToResolutionHours": avg_detection_to_resolution,
         "recordsByCategory": records_by_category,
         "recordsByLocation": records_by_location,
-        "handlingStatusBreakdown": handling_status_breakdown,
+        "detectionStatusBreakdown": detection_status_breakdown,
         "monthlyTrends": get_detection_trends(db, target_org_id, time_series),
     }
 

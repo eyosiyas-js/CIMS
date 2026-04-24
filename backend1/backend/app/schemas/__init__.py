@@ -3,7 +3,7 @@ from app.schemas.admin import (
     DashboardStats, DetectionTrend, ActivityLog, 
     CompanyActivityStat, AnalyticsSummary,
     AnalyticsFilter, CategoryStat, LocationStat, DetailedAnalytics, RawSubmission,
-    HandlingStatusStat, CrimeTypeStat, CrimeTypeTimeStat, CrimeTypeLocationStat,
+    DetectionStatusStat, CrimeTypeStat, CrimeTypeTimeStat, CrimeTypeLocationStat,
     CrimeTypeCompanyStat, HourCrimeHeatmapCell, CrimeTypeAnalyticsResponse,
     CompanyComparisonMetrics, CompanyComparisonTrend, CompanyComparisonResponse,
     CompanyPerformance, PerformanceResponse

@@ -50,8 +50,8 @@ class LocationStat(BaseModel):
     location: str
     count: int
 
-# ── Handling Status Breakdown ────────────────────
-class HandlingStatusStat(BaseModel):
+# ── Detection Status Breakdown ───────────────────
+class DetectionStatusStat(BaseModel):
     status: str
     count: int
 
@@ -64,7 +64,7 @@ class DetailedAnalytics(BaseModel):
     avgDetectionToResolutionHours: Optional[float] = None  # avg hours from first camera detection to resolution/closure
     recordsByCategory: List[CategoryStat]
     recordsByLocation: List[LocationStat]
-    handlingStatusBreakdown: List[HandlingStatusStat]
+    detectionStatusBreakdown: List[DetectionStatusStat]
     monthlyTrends: List[DetectionTrend]
 
 # ── Crime Type Analytics ─────────────────────────

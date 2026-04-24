@@ -26,27 +26,30 @@ const tooltipStyle = {
     boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)"
 };
 
-const HANDLING_STATUS_COLORS: Record<string, string> = {
-    "Submitted \u2013 Not Triggered": "hsl(220, 9%, 55%)",
-    "Detected \u2013 Pending Action": "hsl(38, 92%, 50%)",
-    "In Progress": "hsl(199, 89%, 48%)",
-    "Resolved (Successful)": "hsl(152, 69%, 41%)",
-    "Closed (Unsuccessful)": "hsl(0, 72%, 51%)",
-    // Keep legacy keys for raw data table backwards compat
-    unassigned: "hsl(220, 9%, 55%)",
-    pending: "hsl(38, 92%, 50%)",
-    in_progress: "hsl(199, 89%, 48%)",
+const DETECTION_STATUS_COLORS: Record<string, string> = {
+    "Pending": "hsl(220, 9%, 55%)",
+    "Monitoring": "hsl(199, 89%, 48%)",
+    "Detected": "hsl(0, 72%, 51%)",
+    "In Progress": "hsl(38, 92%, 50%)",
+    "Resolved": "hsl(152, 69%, 41%)",
+    "Failed": "hsl(0, 60%, 45%)",
+    // Keep raw keys for raw data table
+    pending: "hsl(220, 9%, 55%)",
+    monitoring: "hsl(199, 89%, 48%)",
+    detected: "hsl(0, 72%, 51%)",
+    in_progress: "hsl(38, 92%, 50%)",
     resolved: "hsl(152, 69%, 41%)",
-    failed: "hsl(0, 72%, 51%)",
+    failed: "hsl(0, 60%, 45%)",
 };
 
-/** Maps internal handling_status values to standardized display labels */
-const HANDLING_STATUS_LABEL_MAP: Record<string, string> = {
-    unassigned: "Submitted \u2013 Not Triggered",
-    pending: "Detected \u2013 Pending Action",
+/** Maps internal status values to human-friendly display labels */
+const DETECTION_STATUS_LABEL_MAP: Record<string, string> = {
+    pending: "Pending",
+    monitoring: "Monitoring",
+    detected: "Detected",
     in_progress: "In Progress",
-    resolved: "Resolved (Successful)",
-    failed: "Closed (Unsuccessful)",
+    resolved: "Resolved",
+    failed: "Failed",
 };
 
 function StatCard({ title, value, icon: Icon, trend, color, subtitle }: any) {
@@ -149,17 +152,18 @@ export function DetectionsAnalytics() {
                 </Select>
 
                 <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
-                    <SelectTrigger className="w-[220px] h-9">
+                    <SelectTrigger className="w-[180px] h-9">
                         <CheckCircle2 className="w-3.5 h-3.5 mr-2 opacity-70" />
                         <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="unassigned">Submitted – Not Triggered</SelectItem>
-                        <SelectItem value="pending">Detected – Pending Action</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="monitoring">Monitoring</SelectItem>
+                        <SelectItem value="detected">Detected</SelectItem>
                         <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="resolved">Resolved (Successful)</SelectItem>
-                        <SelectItem value="failed">Closed (Unsuccessful)</SelectItem>
+                        <SelectItem value="resolved">Resolved</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>
                 </Select>
 
@@ -272,37 +276,37 @@ export function DetectionsAnalytics() {
                             </CardContent>
                         </Card>
 
-                        {/* Handling Status Breakdown */}
+                        {/* Detection Status Breakdown */}
                         <Card className="glass-card overflow-hidden border-border/50">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                                     <CheckCircle2 className="w-4 h-4 text-primary" />
-                                    Handling Status Breakdown
+                                    Detection Status Breakdown
                                 </CardTitle>
-                                <CardDescription>Detection lifecycle status distribution</CardDescription>
+                                <CardDescription>Current state of detections in the system</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="flex flex-col md:flex-row items-center justify-around gap-4">
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
                                             <Pie
-                                                data={analytics?.handlingStatusBreakdown ?? []}
+                                                data={analytics?.detectionStatusBreakdown ?? []}
                                                 cx="50%" cy="50%"
                                                 innerRadius={60} outerRadius={80}
                                                 paddingAngle={5} dataKey="count" nameKey="status"
                                             >
-                                                {(analytics?.handlingStatusBreakdown ?? []).map((item: any, i: number) => (
-                                                    <Cell key={i} fill={HANDLING_STATUS_COLORS[item.status] || colors[i % colors.length]} />
+                                                {(analytics?.detectionStatusBreakdown ?? []).map((item: any, i: number) => (
+                                                    <Cell key={i} fill={DETECTION_STATUS_COLORS[item.status] || colors[i % colors.length]} />
                                                 ))}
                                             </Pie>
                                             <Tooltip contentStyle={tooltipStyle} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="space-y-3 w-full max-w-[200px]">
-                                        {(analytics?.handlingStatusBreakdown ?? []).map((item: any) => (
+                                        {(analytics?.detectionStatusBreakdown ?? []).map((item: any) => (
                                             <div key={item.status} className="flex justify-between items-center text-sm">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: HANDLING_STATUS_COLORS[item.status] || "#888" }} />
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: DETECTION_STATUS_COLORS[item.status] || "#888" }} />
                                                     <span>{item.status}</span>
                                                 </div>
                                                 <span className="font-semibold">{item.count}</span>
@@ -410,19 +414,19 @@ export function DetectionsAnalytics() {
 
                     <Card className="glass-card overflow-hidden border-border/50">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-lg font-semibold">Handling Status Pipeline</CardTitle>
-                            <CardDescription>How detections flow through the handling lifecycle</CardDescription>
+                            <CardTitle className="text-lg font-semibold">Detection Status Pipeline</CardTitle>
+                            <CardDescription>How detections flow through the status lifecycle</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={analytics?.handlingStatusBreakdown ?? []} layout="vertical">
+                                <BarChart data={analytics?.detectionStatusBreakdown ?? []} layout="vertical">
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                                    <YAxis type="category" dataKey="status" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={180} />
+                                    <YAxis type="category" dataKey="status" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={120} />
                                     <Tooltip contentStyle={tooltipStyle} />
                                     <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={30}>
-                                        {(analytics?.handlingStatusBreakdown ?? []).map((item: any, i: number) => (
-                                            <Cell key={i} fill={HANDLING_STATUS_COLORS[item.status] || colors[i % colors.length]} />
+                                        {(analytics?.detectionStatusBreakdown ?? []).map((item: any, i: number) => (
+                                            <Cell key={i} fill={DETECTION_STATUS_COLORS[item.status] || colors[i % colors.length]} />
                                         ))}
                                     </Bar>
                                 </BarChart>
@@ -477,12 +481,12 @@ export function DetectionsAnalytics() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge 
+                                                <Badge 
                                                         variant="outline" 
                                                         className="text-[10px] capitalize px-1.5 py-0"
-                                                        style={{ borderColor: HANDLING_STATUS_COLORS[row.handlingStatus] || undefined, color: HANDLING_STATUS_COLORS[row.handlingStatus] || undefined }}
+                                                        style={{ borderColor: DETECTION_STATUS_COLORS[row.status] || undefined, color: DETECTION_STATUS_COLORS[row.status] || undefined }}
                                                     >
-                                                        {HANDLING_STATUS_LABEL_MAP[row.handlingStatus || "unassigned"] || row.handlingStatus || "Pending Verification"}
+                                                        {DETECTION_STATUS_LABEL_MAP[row.status || "pending"] || row.status || "Pending"}
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground text-[11px]">
@@ -581,8 +585,8 @@ export function DetectionsAnalytics() {
                                         <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Assigned To:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.assignedCompanyName || "Unassigned"}</span></div>
                                         <div className="grid grid-cols-3 text-muted-foreground">
                                             <span className="col-span-1">Action Status:</span>
-                                            <span className="col-span-2 font-medium" style={{ color: HANDLING_STATUS_COLORS[selectedRow.handlingStatus || "unassigned"] }}>
-                                                {HANDLING_STATUS_LABEL_MAP[selectedRow.handlingStatus || "unassigned"] || selectedRow.handlingStatus || "Pending Verification"}
+                                            <span className="col-span-2 font-medium" style={{ color: DETECTION_STATUS_COLORS[selectedRow.status || "pending"] }}>
+                                                {DETECTION_STATUS_LABEL_MAP[selectedRow.status || "pending"] || selectedRow.status || "Pending"}
                                             </span>
                                         </div>
                                         {selectedRow.handlingNotes && <div className="grid grid-cols-3 text-muted-foreground"><span className="col-span-1">Notes:</span><span className="col-span-2 text-foreground font-medium">{selectedRow.handlingNotes}</span></div>}
