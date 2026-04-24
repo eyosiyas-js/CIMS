@@ -526,12 +526,17 @@ def get_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
     if current_user.role.name != "Super Admin":
         if detection.organization_id != current_user.organization_id:
-            # Also allow if user has an assignment for this detection
+            # Allow if user belongs to the assigned company (company-level assignment)
+            is_assigned_company = (
+                detection.assigned_company_id
+                and detection.assigned_company_id == current_user.organization_id
+            )
+            # Also allow if user has an individual assignment for this detection (traffic flow)
             has_assignment = db.query(models.DetectionAssignment).filter(
                 models.DetectionAssignment.detection_id == detection.id,
                 models.DetectionAssignment.user_id == current_user.id
             ).first()
-            if not has_assignment:
+            if not is_assigned_company and not has_assignment:
                 raise HTTPException(status_code=403, detail="Not enough permissions")
     
     return _enrich_detection(db, detection)

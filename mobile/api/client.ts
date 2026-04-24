@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // For physical device testing, use your computer's local IP address.
 // Based on your ipconfig, it looks like: 172.20.83.212 (or 192.168.137.1 if on hotspot)
-export const BASE_URL = 'http://172.20.83.26:8000'; // Computer's local IP address for Expo testing
+export const BASE_URL = 'http://192.168.1.7:8000'; // Computer's local IP address for Expo testing
 const API_URL = `${BASE_URL}/api/v1`;
 // const API_URL = 'http://127.0.0.1:8000/api/v1'; // Use this for web/emulator ONLY
 

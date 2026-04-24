@@ -1,11 +1,11 @@
 import {
-  LayoutDashboard,
   BarChart3,
   Building2,
   Users,
   ShieldCheck,
   FileEdit,
   Cpu,
+  Monitor,
   Shield,
   ChevronLeft,
   Search,
@@ -18,19 +18,18 @@ import { cn } from "@/lib/utils";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 const superAdminItems = [
-  { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Companies", url: "/admin/companies", icon: Building2 },
   { title: "Global Analytics", url: "/admin/analytics", icon: BarChart3 },
+  { title: "Devices", url: "/admin/devices", icon: Monitor },
   { title: "System Settings", url: "/admin/settings", icon: Cpu },
 ];
 
 const companyAdminItems = [
-  { title: "Company Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Companies", url: "/admin/companies", icon: Building2 },
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Roles & Permissions", url: "/admin/roles", icon: ShieldCheck },
   { title: "Form Templates", url: "/admin/forms", icon: FileEdit },
-  { title: "Organization Devices", url: "/admin/devices", icon: Cpu },
+  { title: "Organization Devices", url: "/admin/devices", icon: Monitor },
   { title: "Company Analytics", url: "/admin/analytics", icon: BarChart3 },
 ];
 

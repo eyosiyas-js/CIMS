@@ -27,7 +27,8 @@ export default function DetectionDetailsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isTraffic = user?.companyType === 'Traffic';
+  const orgType = (user as any)?.organizationFeatures?.company_type || user?.companyType;
+  const isTraffic = orgType === 'traffic_police';
 
   const [notes, setNotes] = useState('');
   const [selectedProofImages, setSelectedProofImages] = useState<any[]>([]); // Future: add expo-image-picker

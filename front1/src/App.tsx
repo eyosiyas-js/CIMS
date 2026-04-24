@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { SocketProvider } from "./contexts/SocketProvider";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -54,7 +54,7 @@ const App = () => (
             <Route path="/simulation" element={<ProtectedRoute><SimulationPage /></ProtectedRoute>} />
 
             {/* Admin Routes */}
-            <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
             <Route path="/admin/analytics" element={<ProtectedRoute><DetectionsAnalytics /></ProtectedRoute>} />
             <Route path="/admin/analytics/detections" element={<ProtectedRoute><DetectionsAnalytics /></ProtectedRoute>} />
             <Route path="/admin/analytics/crime-types" element={<ProtectedRoute><CrimeTypeAnalytics /></ProtectedRoute>} />
